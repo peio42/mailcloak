@@ -1,0 +1,21 @@
+#
+# Configuration to add to /etc/postfix/main.cf
+#
+
+# Domaine local “virtuel”
+virtual_mailbox_domains = static:<EMail domain-name>
+
+# Delivery to dovecot LMTP
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+
+# Dynamic aliases via socketmap
+virtual_alias_maps = socketmap:unix:private/kc-socketmap:alias
+
+# Policy (RCPT existence + sender policy on 587 via master.cf)
+smtpd_recipient_restrictions =
+  reject_non_fqdn_recipient,
+  reject_unknown_recipient_domain,
+  permit_sasl_authenticated,
+  reject_unauth_destination,
+  check_policy_service unix:private/kc-policy,
+  permit

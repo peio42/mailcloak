@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+
+name="kc-policy"
+command="/usr/local/sbin/kc-policy"
+command_args="/etc/kc-policy/config.yaml"
+command_background="yes"
+pidfile="/run/kc-policy.pid"
+
+depend() {
+  need net
+  after postfix
+}
+
+start_pre() {
+  checkpath -d -m 0750 -o root:postfix /etc/kc-policy
+  checkpath -d -m 0750 -o root:postfix /var/lib/kc-policy
+  checkpath -d -m 0755 -o root:root /usr/local/sbin
+  # sockets dir already exists
+}
+
+stop_post() {
+  rm -f /var/spool/postfix/private/kc-policy /var/spool/postfix/private/kc-socketmap
+}

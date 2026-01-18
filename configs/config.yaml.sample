@@ -1,0 +1,26 @@
+keycloak:
+  base_url: "<Keycloak URL>"
+  realm: "<Keycloak Realm>"
+  client_id: "<Client ID>"
+  client_secret: "<Client Secret>"
+  # admin API is derived: {base_url}/admin/realms/{realm}
+
+sqlite:
+  path: "/var/lib/kc-policy/aliases.db"
+
+policy:
+  domain: "<EMail domain-name>"
+  # cache for keycloak lookups (username->email, email->exists)
+  cache_ttl_seconds: 120
+  # if keycloak is down:
+  #  - "tempfail": return 451 (recommended)
+  #  - "dunno": fail-open
+  keycloak_failure_mode: "tempfail"
+
+sockets:
+  # These paths must be inside postfix chroot (/var/spool/postfix)
+  policy_socket: "/var/spool/postfix/private/kc-policy"
+  socketmap_socket: "/var/spool/postfix/private/kc-socketmap"
+  socket_owner_user: "postfix"
+  socket_owner_group: "postfix"
+  socket_mode: "0660"

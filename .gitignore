@@ -1,0 +1,15 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+
+# Go build cache (jamais versionné)
+pkg/
+vendor/   # sauf si tu utilises volontairement vendoring
+
+# IDE
+.idea/
+.vscode/
+
+# Local config files
+config.yaml

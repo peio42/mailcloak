@@ -1,0 +1,8 @@
+#
+# Configuration to add to /etc/postfix/master.cf
+#
+
+-o smtpd_sender_restrictions=check_policy_service unix:private/kc-policy
+
+# You can remove `reject_senders_login_mismaych` + `sender_login_maps`
+# as this kc-policy will handle it.
