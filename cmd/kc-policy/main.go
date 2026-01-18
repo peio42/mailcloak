@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -11,7 +12,14 @@ import (
 	"kc-policy/internal/kcpolicy"
 )
 
+var version = "dev"
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println(version)
+		return
+	}
+
 	cfgPath := "/etc/kc-policy/config.yaml"
 	if len(os.Args) >= 2 {
 		cfgPath = os.Args[1]

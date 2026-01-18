@@ -1,0 +1,53 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux]
+        arch: [amd64]  # [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+
+      - name: Build (linux/musl)
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "0"
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eux
+          mkdir -p dist
+          BIN="kc-policy-${GOOS}-${GOARCH}"
+          go build \
+            -trimpath \
+            -ldflags="-s -w -X main.version=${VERSION}" \
+            -o "dist/${BIN}" ./cmd/kc-policy
+          tar -C dist -czf "dist/${BIN}.tar.gz" "${BIN}"
+          sha256sum "dist/${BIN}.tar.gz" >> dist/checksums.txt
+
+      - name: Upload assets to Gitea release
+        uses: https://gitea.com/actions/gitea-release-action@v1
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+          generate_release_notes: true
+        env:
+          GITEA_TOKEN: ${{ github.token }}
