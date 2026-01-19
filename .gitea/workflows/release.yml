@@ -25,7 +25,7 @@ jobs:
           go-version: "1.22.x"
           cache: true
 
-      - name: Build (linux/musl)
+      - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.arch }}
@@ -47,7 +47,7 @@ jobs:
         with:
           files: |
             dist/*.tar.gz
-            dist/*.sha256
+            dist/checksums.txt
           generate_release_notes: true
         env:
           GITEA_TOKEN: ${{ github.token }}
