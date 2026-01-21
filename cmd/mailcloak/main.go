@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"kc-policy/internal/kcpolicy"
+	"mailcloak/internal/mailcloak"
 )
 
 var version = "dev"
@@ -20,43 +20,43 @@ func main() {
 		return
 	}
 
-	cfgPath := "/etc/kc-policy/config.yaml"
+	cfgPath := "/etc/mailcloak/config.yaml"
 	if len(os.Args) >= 2 {
 		cfgPath = os.Args[1]
 	}
 
-	cfg, err := kcpolicy.LoadConfig(cfgPath)
+	cfg, err := mailcloak.LoadConfig(cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
 
-	db, err := kcpolicy.OpenAliasDB(cfg.SQLite.Path)
+	db, err := mailcloak.OpenAliasDB(cfg.SQLite.Path)
 	if err != nil {
 		log.Fatalf("sqlite: %v", err)
 	}
 	defer db.Close()
 
-	kc := kcpolicy.NewKeycloak(cfg)
-	cache := kcpolicy.NewCache(time.Duration(cfg.Policy.CacheTTLSeconds) * time.Second)
+	kc := mailcloak.NewKeycloak(cfg)
+	cache := mailcloak.NewCache(time.Duration(cfg.Policy.CacheTTLSeconds) * time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Start socketmap server
 	go func() {
-		if err := kcpolicy.RunSocketmap(ctx, cfg, db); err != nil {
+		if err := mailcloak.RunSocketmap(ctx, cfg, db); err != nil {
 			log.Fatalf("socketmap: %v", err)
 		}
 	}()
 
 	// Start policy server
 	go func() {
-		if err := kcpolicy.RunPolicy(ctx, cfg, db, kc, cache); err != nil {
+		if err := mailcloak.RunPolicy(ctx, cfg, db, kc, cache); err != nil {
 			log.Fatalf("policy: %v", err)
 		}
 	}()
 
-	log.Printf("kc-policy started")
+	log.Printf("mailcloak started")
 
 	// Handle signals
 	ch := make(chan os.Signal, 2)

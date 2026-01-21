@@ -1,4 +1,4 @@
-module kc-policy
+module mailcloak
 
 go 1.22
 

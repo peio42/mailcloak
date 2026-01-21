@@ -4,7 +4,7 @@ import sqlite3
 import time
 import sys
 
-DEFAULT_DB = "/var/lib/kc-policy/aliases.db"
+DEFAULT_DB = "/var/lib/mailcloak/state.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS aliases (

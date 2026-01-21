@@ -1,10 +1,14 @@
-BINARY := kc-policy
+BINARY := mailcloak
 BIN_DIR := bin
 
 .PHONY: build run test tidy clean install
 
 build:
-	go build -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)
+	export CGO_ENABLED=0
+	go build \
+		-trimpath \
+		-ldflags="-s -w" \
+		-o "$(BIN_DIR)/$(BINARY)" ./cmd/$(BINARY)
 
 run:
 	go run ./cmd/$(BINARY)

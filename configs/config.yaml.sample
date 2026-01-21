@@ -6,7 +6,7 @@ keycloak:
   # admin API is derived: {base_url}/admin/realms/{realm}
 
 sqlite:
-  path: "/var/lib/kc-policy/aliases.db"
+  path: "/var/lib/mailcloak/state.db"
 
 policy:
   domain: "<EMail domain-name>"
@@ -19,8 +19,8 @@ policy:
 
 sockets:
   # These paths must be inside postfix chroot (/var/spool/postfix)
-  policy_socket: "/var/spool/postfix/private/kc-policy"
-  socketmap_socket: "/var/spool/postfix/private/kc-socketmap"
+  policy_socket: "/var/spool/postfix/private/mailcloak-policy"
+  socketmap_socket: "/var/spool/postfix/private/mailcloak-socketmap"
   socket_owner_user: "postfix"
   socket_owner_group: "postfix"
   socket_mode: "0660"

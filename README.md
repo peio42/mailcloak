@@ -1,4 +1,4 @@
-# kc-policy
+# mailcloak
 
 Postfix policy + socketmap daemon that validates recipients/senders against Keycloak and serves a local aliases SQLite database.
 
@@ -9,13 +9,13 @@ Postfix policy + socketmap daemon that validates recipients/senders against Keyc
 - **Socketmap service**: exposes an `alias` map to Postfix, rewriting alias -> `username@domain`.
 
 ## Project layout
-- `cmd/kc-policy/` – main package entrypoint
-- `internal/kcpolicy/` – daemon sources
+- `cmd/mailcloak/` – main package entrypoint
+- `internal/mailcloak/` – daemon sources
 - `go.mod` / `go.sum` – Go module files
-- `configs/config.yaml.sample` – sample config to copy to `/etc/kc-policy/config.yaml`
-- `configs/openrc-kc-policy` – OpenRC service file
+- `configs/config.yaml.sample` – sample config to copy to `/etc/mailcloak/config.yaml`
+- `configs/openrc-mailcloak` – OpenRC service file
 - `db-init.sql` – SQLite schema (also auto-created by the app)
-- `aliasctl.py` – CLI helper to manage aliases
+- `mailcloakctl` – CLI helper to manage aliases
 
 ## Build the binary
 From the repository root:
@@ -40,8 +40,8 @@ make run
 Copy the sample config and edit it:
 
 ```bash
-install -d -m 0750 -o root -g postfix /etc/kc-policy
-cp configs/config.yaml.sample /etc/kc-policy/config.yaml
+install -d -m 0750 -o root -g postfix /etc/mailcloak
+cp configs/config.yaml.sample /etc/mailcloak/config.yaml
 ```
 
 Key settings:
@@ -50,12 +50,12 @@ Key settings:
 - `sqlite.path` is the aliases database path.
 - `sockets.*` must be under the Postfix chroot (usually `/var/spool/postfix`).
 
-## Alias database
+## Mailcloak database
 You can manage aliases using the helper script:
 
 ```bash
-./aliasctl.py --db /var/lib/kc-policy/aliases.db add alias@example.com username
-./aliasctl.py --db /var/lib/kc-policy/aliases.db list
+./mailcloakctl aliases add alias@example.com username
+./mailcloakctl aliases list
 ```
 
 The script creates the schema automatically if missing.
@@ -63,21 +63,21 @@ The script creates the schema automatically if missing.
 ## Postfix integration (example)
 Policy service (smtpd_recipient_restrictions):
 ```
-check_policy_service unix:private/kc-policy
+check_policy_service unix:private/mailcloak
 ```
 
 Socketmap (virtual_alias_maps):
 ```
-socketmap:unix:private/kc-socketmap:alias
+socketmap:unix:private/mailcloak-socketmap:alias
 ```
 
 ## OpenRC
 Use the provided service file:
 
 ```bash
-cp configs/openrc-kc-policy /etc/init.d/kc-policy
-rc-update add kc-policy default
-rc-service kc-policy start
+cp configs/openrc-mailcloak /etc/init.d/mailcloak
+rc-update add mailcloak default
+rc-service mailcloak start
 ```
 
 ## Notes

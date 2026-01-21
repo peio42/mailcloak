@@ -1,4 +1,4 @@
-package kcpolicy
+package mailcloak
 
 import (
 	"database/sql"

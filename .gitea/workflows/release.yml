@@ -34,22 +34,22 @@ jobs:
         run: |
           set -eux
           mkdir -p dist
-          BIN="kc-policy-${GOOS}-${GOARCH}"
+          BIN="mailcloak-${GOOS}-${GOARCH}"
           go build \
             -trimpath \
             -ldflags="-s -w -X main.version=${VERSION}" \
-            -o "dist/${BIN}" ./cmd/kc-policy
+            -o "dist/${BIN}" ./cmd/mailcloak
           tar -C dist -czf "dist/${BIN}.tar.gz" "${BIN}"
-          cp aliasctl dist/
+          cp mailcloakctl dist/
           sha256sum "dist/${BIN}.tar.gz" >> dist/checksums.txt
-          sha256sum "dist/aliasctl" >> dist/checksums.txt
+          sha256sum "dist/mailcloakctl" >> dist/checksums.txt
 
       - name: Upload assets to Gitea release
         uses: https://gitea.com/actions/gitea-release-action@v1
         with:
           files: |
             dist/*.tar.gz
-            dist/aliasctl
+            dist/mailcloakctl
             dist/checksums.txt
           generate_release_notes: true
         env:
