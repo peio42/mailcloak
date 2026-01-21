@@ -3,6 +3,7 @@ import argparse
 import sqlite3
 import time
 import sys
+from argon2 import PasswordHasher, Type
 
 DEFAULT_DB = "/var/lib/mailcloak/state.db"
 
@@ -14,10 +15,24 @@ CREATE TABLE IF NOT EXISTS aliases (
   updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_aliases_username ON aliases(username);
+CREATE TABLE IF NOT EXISTS apps (
+    app_id      TEXT PRIMARY KEY,
+    secret_hash TEXT NOT NULL,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS app_from (
+    app_id    TEXT NOT NULL,
+    from_addr TEXT NOT NULL,
+    enabled   INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (app_id, from_addr),
+    FOREIGN KEY (app_id) REFERENCES apps(app_id) ON DELETE CASCADE
+);
 """
 
 def connect(db_path: str):
     con = sqlite3.connect(db_path)
+    con.execute("PRAGMA foreign_keys=ON;")
     con.execute("PRAGMA journal_mode=WAL;")
     con.execute("PRAGMA synchronous=NORMAL;")
     con.executescript(SCHEMA)
@@ -26,7 +41,19 @@ def connect(db_path: str):
 def norm_email(s: str) -> str:
     return s.strip().lower()
 
-def cmd_add(con, alias_email, username):
+def norm_id(s: str) -> str:
+    return s.strip()
+
+argon2_hasher = PasswordHasher(
+    time_cost=3,
+    memory_cost=65536,
+    parallelism=1,
+    hash_len=32,
+    salt_len=16,
+    type=Type.ID,
+)
+
+def cmd_aliases_add(con, alias_email, username):
     alias_email = norm_email(alias_email)
     username = username.strip()
     now = int(time.time())
@@ -37,17 +64,17 @@ def cmd_add(con, alias_email, username):
     )
     con.commit()
 
-def cmd_del(con, alias_email):
+def cmd_aliases_del(con, alias_email):
     alias_email = norm_email(alias_email)
     con.execute("DELETE FROM aliases WHERE alias_email=?", (alias_email,))
     con.commit()
 
-def cmd_disable(con, alias_email):
+def cmd_aliases_disable(con, alias_email):
     alias_email = norm_email(alias_email)
     con.execute("UPDATE aliases SET enabled=0, updated_at=? WHERE alias_email=?", (int(time.time()), alias_email))
     con.commit()
 
-def cmd_list(con, username=None):
+def cmd_aliases_list(con, username=None):
     if username:
         rows = con.execute(
             "SELECT alias_email, username, enabled, updated_at FROM aliases WHERE username=? ORDER BY alias_email",
@@ -60,35 +87,109 @@ def cmd_list(con, username=None):
     for a,u,en,ts in rows:
         print(f"{a}\t{u}\t{'enabled' if en else 'disabled'}\t{ts}")
 
+def cmd_apps_add(con, app_id, password):
+    app_id = norm_id(app_id)
+    secret_hash = argon2_hasher.hash(password)
+    now = int(time.time())
+    con.execute(
+        "INSERT INTO apps(app_id, secret_hash, enabled, created_at) VALUES(?,?,1,?) "
+        "ON CONFLICT(app_id) DO UPDATE SET secret_hash=excluded.secret_hash, enabled=1, created_at=excluded.created_at",
+        (app_id, secret_hash, now),
+    )
+    con.commit()
+
+def cmd_apps_del(con, app_id):
+    app_id = norm_id(app_id)
+    con.execute("DELETE FROM apps WHERE app_id=?", (app_id,))
+    con.commit()
+
+def cmd_apps_allow(con, app_id, from_addr):
+    app_id = norm_id(app_id)
+    from_addr = norm_email(from_addr)
+    con.execute(
+        "INSERT INTO app_from(app_id, from_addr, enabled) VALUES(?,?,1) "
+        "ON CONFLICT(app_id, from_addr) DO UPDATE SET enabled=1",
+        (app_id, from_addr),
+    )
+    con.commit()
+
+def cmd_apps_disallow(con, app_id, from_addr):
+    app_id = norm_id(app_id)
+    from_addr = norm_email(from_addr)
+    con.execute("DELETE FROM app_from WHERE app_id=? AND from_addr=?", (app_id, from_addr))
+    con.commit()
+
+def cmd_apps_list(con):
+    rows = con.execute(
+        "SELECT app_id, enabled, created_at FROM apps ORDER BY app_id"
+    ).fetchall()
+    for app_id,en,ts in rows:
+        print(f"{app_id}\t{'enabled' if en else 'disabled'}\t{ts}")
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DEFAULT_DB)
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="group", required=True)
 
-    p_add = sub.add_parser("add")
+    aliases = sub.add_parser("aliases")
+    aliases_sub = aliases.add_subparsers(dest="cmd", required=True)
+
+    p_add = aliases_sub.add_parser("add")
     p_add.add_argument("alias_email")
     p_add.add_argument("username")
 
-    p_del = sub.add_parser("del")
+    p_del = aliases_sub.add_parser("del")
     p_del.add_argument("alias_email")
 
-    p_dis = sub.add_parser("disable")
+    p_dis = aliases_sub.add_parser("disable")
     p_dis.add_argument("alias_email")
 
-    p_ls = sub.add_parser("list")
+    p_ls = aliases_sub.add_parser("list")
     p_ls.add_argument("--user", default=None)
+
+    apps = sub.add_parser("apps")
+    apps_sub = apps.add_subparsers(dest="cmd", required=True)
+
+    p_app_add = apps_sub.add_parser("add")
+    p_app_add.add_argument("app_id")
+    p_app_add.add_argument("password")
+
+    p_app_del = apps_sub.add_parser("del")
+    p_app_del.add_argument("app_id")
+
+    p_app_allow = apps_sub.add_parser("allow")
+    p_app_allow.add_argument("app_id")
+    p_app_allow.add_argument("from_addr")
+
+    p_app_disallow = apps_sub.add_parser("disallow")
+    p_app_disallow.add_argument("app_id")
+    p_app_disallow.add_argument("from_addr")
+
+    p_app_ls = apps_sub.add_parser("list")
 
     args = ap.parse_args()
     con = connect(args.db)
     try:
-        if args.cmd == "add":
-            cmd_add(con, args.alias_email, args.username)
-        elif args.cmd == "del":
-            cmd_del(con, args.alias_email)
-        elif args.cmd == "disable":
-            cmd_disable(con, args.alias_email)
-        elif args.cmd == "list":
-            cmd_list(con, args.user)
+        if args.group == "aliases":
+            if args.cmd == "add":
+                cmd_aliases_add(con, args.alias_email, args.username)
+            elif args.cmd == "del":
+                cmd_aliases_del(con, args.alias_email)
+            elif args.cmd == "disable":
+                cmd_aliases_disable(con, args.alias_email)
+            elif args.cmd == "list":
+                cmd_aliases_list(con, args.user)
+        elif args.group == "apps":
+            if args.cmd == "add":
+                cmd_apps_add(con, args.app_id, args.password)
+            elif args.cmd == "del":
+                cmd_apps_del(con, args.app_id)
+            elif args.cmd == "allow":
+                cmd_apps_allow(con, args.app_id, args.from_addr)
+            elif args.cmd == "disallow":
+                cmd_apps_disallow(con, args.app_id, args.from_addr)
+            elif args.cmd == "list":
+                cmd_apps_list(con)
     finally:
         con.close()
 
