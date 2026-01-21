@@ -24,3 +24,6 @@ sockets:
   socket_owner_user: "postfix"
   socket_owner_group: "postfix"
   socket_mode: "0660"
+
+daemon:
+  user: "mailcloak"

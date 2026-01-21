@@ -30,6 +30,23 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	policyListener, err := mailcloak.OpenPolicyListener(cfg)
+	if err != nil {
+		log.Fatalf("policy listener: %v", err)
+	}
+
+	socketmapListener, err := mailcloak.OpenSocketmapListener(cfg)
+	if err != nil {
+		_ = policyListener.Close()
+		log.Fatalf("socketmap listener: %v", err)
+	}
+
+	if err := mailcloak.DropPrivileges(cfg); err != nil {
+		_ = policyListener.Close()
+		_ = socketmapListener.Close()
+		log.Fatalf("privileges: %v", err)
+	}
+
 	db, err := mailcloak.OpenAliasDB(cfg.SQLite.Path)
 	if err != nil {
 		log.Fatalf("sqlite: %v", err)
@@ -44,14 +61,14 @@ func main() {
 
 	// Start socketmap server
 	go func() {
-		if err := mailcloak.RunSocketmap(ctx, cfg, db); err != nil {
+		if err := mailcloak.ServeSocketmap(ctx, cfg, db, socketmapListener); err != nil {
 			log.Fatalf("socketmap: %v", err)
 		}
 	}()
 
 	// Start policy server
 	go func() {
-		if err := mailcloak.RunPolicy(ctx, cfg, db, kc, cache); err != nil {
+		if err := mailcloak.ServePolicy(ctx, cfg, db, kc, cache, policyListener); err != nil {
 			log.Fatalf("policy: %v", err)
 		}
 	}()

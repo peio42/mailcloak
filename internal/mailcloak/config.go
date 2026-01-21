@@ -8,6 +8,10 @@ import (
 )
 
 type Config struct {
+	Daemon struct {
+		User string `yaml:"user"`
+	} `yaml:"daemon"`
+
 	Keycloak struct {
 		BaseURL      string `yaml:"base_url"`
 		Realm        string `yaml:"realm"`
@@ -57,6 +61,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Policy.KeycloakFailureMode == "" {
 		cfg.Policy.KeycloakFailureMode = "tempfail"
+	}
+	if cfg.Daemon.User == "" {
+		cfg.Daemon.User = "mailcloak"
 	}
 	return &cfg, nil
 }

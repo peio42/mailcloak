@@ -38,19 +38,25 @@ func (c *Cache) Put(key, val string, ok bool) {
 	c.m[key] = cacheItem{val: val, ok: ok, expires: time.Now().Add(c.ttl)}
 }
 
-func RunPolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache) error {
+func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 	sock := cfg.Sockets.PolicySocket
 	_ = os.Remove(sock)
 
 	l, err := net.Listen("unix", sock)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer l.Close()
 
 	if err := ChownChmodSocket(sock, cfg); err != nil {
-		return err
+		_ = l.Close()
+		return nil, err
 	}
+
+	return l, nil
+}
+
+func ServePolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache, l net.Listener) error {
+	defer l.Close()
 
 	for {
 		conn, err := l.Accept()
@@ -64,6 +70,14 @@ func RunPolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, cach
 		}
 		go handlePolicyConn(conn, cfg, db, kc, cache)
 	}
+}
+
+func RunPolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache) error {
+	l, err := OpenPolicyListener(cfg)
+	if err != nil {
+		return err
+	}
+	return ServePolicy(ctx, cfg, db, kc, cache, l)
 }
 
 func handlePolicyConn(conn net.Conn, cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache) {

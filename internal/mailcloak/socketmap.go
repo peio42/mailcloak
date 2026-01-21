@@ -11,19 +11,25 @@ import (
 	"strings"
 )
 
-func RunSocketmap(ctx context.Context, cfg *Config, db *AliasDB) error {
+func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 	sock := cfg.Sockets.SocketmapSocket
 	_ = os.Remove(sock)
 
 	l, err := net.Listen("unix", sock)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer l.Close()
 
 	if err := ChownChmodSocket(sock, cfg); err != nil {
-		return err
+		_ = l.Close()
+		return nil, err
 	}
+
+	return l, nil
+}
+
+func ServeSocketmap(ctx context.Context, cfg *Config, db *AliasDB, l net.Listener) error {
+	defer l.Close()
 
 	for {
 		conn, err := l.Accept()
@@ -37,6 +43,14 @@ func RunSocketmap(ctx context.Context, cfg *Config, db *AliasDB) error {
 		}
 		go handleSocketmapConn(conn, cfg, db)
 	}
+}
+
+func RunSocketmap(ctx context.Context, cfg *Config, db *AliasDB) error {
+	l, err := OpenSocketmapListener(cfg)
+	if err != nil {
+		return err
+	}
+	return ServeSocketmap(ctx, cfg, db, l)
 }
 
 // Postfix socketmap framing: "<len>:<payload>,"
