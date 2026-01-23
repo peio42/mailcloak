@@ -2,6 +2,7 @@ package mailcloak
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -58,12 +59,15 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Policy.CacheTTLSeconds <= 0 {
 		cfg.Policy.CacheTTLSeconds = 120
+		log.Printf("config: policy.cache_ttl_seconds not set, defaulting to %d", cfg.Policy.CacheTTLSeconds)
 	}
 	if cfg.Policy.KeycloakFailureMode == "" {
 		cfg.Policy.KeycloakFailureMode = "tempfail"
+		log.Printf("config: policy.keycloak_failure_mode not set, defaulting to %s", cfg.Policy.KeycloakFailureMode)
 	}
 	if cfg.Daemon.User == "" {
 		cfg.Daemon.User = "mailcloak"
+		log.Printf("config: daemon.user not set, defaulting to %s", cfg.Daemon.User)
 	}
 	return &cfg, nil
 }

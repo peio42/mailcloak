@@ -3,8 +3,10 @@ package mailcloak
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -24,11 +26,12 @@ func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 		_ = l.Close()
 		return nil, err
 	}
+	log.Printf("socketmap listener ready on %s", sock)
 
 	return l, nil
 }
 
-func ServeSocketmap(ctx context.Context, cfg *Config, db *AliasDB, l net.Listener) error {
+func ServeSocketmap(ctx context.Context, cfg *Config, db *MailcloakDB, l net.Listener) error {
 	defer l.Close()
 
 	for {
@@ -38,6 +41,7 @@ func ServeSocketmap(ctx context.Context, cfg *Config, db *AliasDB, l net.Listene
 			case <-ctx.Done():
 				return nil
 			default:
+				log.Printf("socketmap accept error: %v", err)
 				return err
 			}
 		}
@@ -45,7 +49,7 @@ func ServeSocketmap(ctx context.Context, cfg *Config, db *AliasDB, l net.Listene
 	}
 }
 
-func RunSocketmap(ctx context.Context, cfg *Config, db *AliasDB) error {
+func RunSocketmap(ctx context.Context, cfg *Config, db *MailcloakDB) error {
 	l, err := OpenSocketmapListener(cfg)
 	if err != nil {
 		return err
@@ -54,33 +58,40 @@ func RunSocketmap(ctx context.Context, cfg *Config, db *AliasDB) error {
 }
 
 // Postfix socketmap framing: "<len>:<payload>,"
-func handleSocketmapConn(conn net.Conn, cfg *Config, db *AliasDB) {
+func handleSocketmapConn(conn net.Conn, cfg *Config, db *MailcloakDB) {
 	defer conn.Close()
 	r := bufio.NewReader(conn)
 
 	for {
 		payload, err := readSocketmapFrame(r)
 		if err != nil {
+			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+				log.Printf("socketmap read error: %v", err)
+			}
 			// normal close
 			return
 		}
 
 		payload = strings.TrimSpace(payload)
 		if payload == "" {
+			log.Printf("socketmap request: empty payload")
 			_ = writeSocketmapFrame(conn, "NOTFOUND")
 			continue
 		}
 
 		parts := strings.SplitN(payload, " ", 2)
 		if len(parts) != 2 {
+			log.Printf("socketmap request: malformed payload=%q", payload)
 			_ = writeSocketmapFrame(conn, "TEMP")
 			continue
 		}
 
 		mapName := parts[0]
 		key := strings.ToLower(strings.TrimSpace(parts[1]))
+		log.Printf("socketmap request: map=%s key=%s", mapName, key)
 
 		if mapName != "alias" {
+			log.Printf("socketmap decision: map=%s action=NOTFOUND", mapName)
 			_ = writeSocketmapFrame(conn, "NOTFOUND")
 			continue
 		}
@@ -88,22 +99,27 @@ func handleSocketmapConn(conn net.Conn, cfg *Config, db *AliasDB) {
 		// Only handle our domain
 		domain := strings.ToLower(cfg.Policy.Domain)
 		if !strings.HasSuffix(key, "@"+domain) {
+			log.Printf("socketmap decision: map=alias key=%s action=NOTFOUND (other domain)", key)
 			_ = writeSocketmapFrame(conn, "NOTFOUND")
 			continue
 		}
 
 		username, ok, err := db.AliasOwner(key)
 		if err != nil {
+			log.Printf("socketmap db error: key=%s err=%v", key, err)
 			_ = writeSocketmapFrame(conn, "TEMP")
 			continue
 		}
 		if !ok {
+			log.Printf("socketmap decision: map=alias key=%s action=NOTFOUND", key)
 			_ = writeSocketmapFrame(conn, "NOTFOUND")
 			continue
 		}
 
 		// rewrite alias -> username@domain
-		_ = writeSocketmapFrame(conn, fmt.Sprintf("OK %s@%s", username, domain))
+		reply := fmt.Sprintf("OK %s@%s", username, domain)
+		log.Printf("socketmap decision: map=alias key=%s action=%s", key, reply)
+		_ = writeSocketmapFrame(conn, reply)
 	}
 }
 

@@ -15,8 +15,8 @@ import (
 var version = "dev"
 
 func main() {
+	fmt.Printf("mailcloak %s\n", version)
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Println(version)
 		return
 	}
 
@@ -25,29 +25,34 @@ func main() {
 		cfgPath = os.Args[1]
 	}
 
+	log.Printf("loading config from %s", cfgPath)
 	cfg, err := mailcloak.LoadConfig(cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
 
+	log.Printf("opening policy listener at %s", cfg.Sockets.PolicySocket)
 	policyListener, err := mailcloak.OpenPolicyListener(cfg)
 	if err != nil {
 		log.Fatalf("policy listener: %v", err)
 	}
 
+	log.Printf("opening socketmap listener at %s", cfg.Sockets.SocketmapSocket)
 	socketmapListener, err := mailcloak.OpenSocketmapListener(cfg)
 	if err != nil {
 		_ = policyListener.Close()
 		log.Fatalf("socketmap listener: %v", err)
 	}
 
+	log.Printf("dropping privileges to %s", cfg.Daemon.User)
 	if err := mailcloak.DropPrivileges(cfg); err != nil {
 		_ = policyListener.Close()
 		_ = socketmapListener.Close()
 		log.Fatalf("privileges: %v", err)
 	}
 
-	db, err := mailcloak.OpenAliasDB(cfg.SQLite.Path)
+	log.Printf("opening sqlite db at %s", cfg.SQLite.Path)
+	db, err := mailcloak.OpenMailcloakDB(cfg.SQLite.Path)
 	if err != nil {
 		log.Fatalf("sqlite: %v", err)
 	}
@@ -61,6 +66,7 @@ func main() {
 
 	// Start socketmap server
 	go func() {
+		log.Printf("socketmap server started")
 		if err := mailcloak.ServeSocketmap(ctx, cfg, db, socketmapListener); err != nil {
 			log.Fatalf("socketmap: %v", err)
 		}
@@ -68,6 +74,7 @@ func main() {
 
 	// Start policy server
 	go func() {
+		log.Printf("policy server started")
 		if err := mailcloak.ServePolicy(ctx, cfg, db, kc, cache, policyListener); err != nil {
 			log.Fatalf("policy: %v", err)
 		}

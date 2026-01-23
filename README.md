@@ -51,6 +51,8 @@ Key settings:
 - `sockets.*` must be under the Postfix chroot (usually `/var/spool/postfix`).
 
 ## Mailcloak database
+
+### Aliases
 You can manage aliases using the helper script:
 
 ```bash
@@ -59,6 +61,19 @@ You can manage aliases using the helper script:
 ```
 
 The script creates the schema automatically if missing.
+
+### Apps (Dovecot app passwords)
+The helper script also manages application credentials. The application password is a token: updating the application ID and password is handled by the script and stored as a hash in SQLite. Dovecot can verify these credentials using plain authentication against the stored hash. Applications are restricted to sending emails only (they cannot receive them) and may use only their authorized sender addresses.
+
+Examples:
+
+```bash
+./mailcloakctl apps add my-app-id "my-app-token"
+./mailcloakctl apps allow my-app-id sender@example.com
+./mailcloakctl apps list
+./mailcloakctl apps disallow my-app-id sender@example.com
+./mailcloakctl apps del my-app-id
+```
 
 ## Postfix integration (example)
 Policy service (smtpd_recipient_restrictions):

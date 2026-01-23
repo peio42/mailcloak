@@ -12,10 +12,8 @@ depend() {
 }
 
 start_pre() {
-  checkpath -d -m 0750 -o root:postfix /etc/mailcloak
-  checkpath -d -m 0750 -o root:postfix /var/lib/mailcloak
-  checkpath -d -m 0755 -o root:root /usr/local/sbin
-  # sockets dir already exists
+  checkpath -d -m 0750 -o root:root /etc/mailcloak
+  checkpath -d -m 0750 -o mailcloak:dovecot /var/lib/mailcloak
 }
 
 stop_post() {

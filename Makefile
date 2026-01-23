@@ -4,11 +4,8 @@ BIN_DIR := bin
 .PHONY: build run test tidy clean install
 
 build:
-	export CGO_ENABLED=0
-	go build \
-		-trimpath \
-		-ldflags="-s -w" \
-		-o "$(BIN_DIR)/$(BINARY)" ./cmd/$(BINARY)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+	go build -trimpath -ldflags="-s -w" -o bin/mailcloak ./cmd/mailcloak
 
 run:
 	go run ./cmd/$(BINARY)

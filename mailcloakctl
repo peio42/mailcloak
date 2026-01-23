@@ -4,38 +4,47 @@ import sqlite3
 import time
 import sys
 from argon2 import PasswordHasher, Type
+from pathlib import Path
 
 DEFAULT_DB = "/var/lib/mailcloak/state.db"
 
-SCHEMA = """
+
+def connect(db_path: str, create: bool = False):
+    db_file = Path(db_path).expanduser().resolve()
+    if not create and not db_file.exists():
+        raise SystemExit(f"sqlite db not found at {db_file}; create it with mailcloakctl init")
+    if create:
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(db_file))
+    con.execute("PRAGMA foreign_keys=ON;")
+    con.execute("PRAGMA journal_mode=WAL;")
+    con.execute("PRAGMA synchronous=NORMAL;")
+    con.executescript("""
 CREATE TABLE IF NOT EXISTS aliases (
   alias_email TEXT PRIMARY KEY,
   username    TEXT NOT NULL,
   enabled     INTEGER NOT NULL DEFAULT 1,
   updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
+
 CREATE INDEX IF NOT EXISTS idx_aliases_username ON aliases(username);
+
 CREATE TABLE IF NOT EXISTS apps (
-    app_id      TEXT PRIMARY KEY,
-    secret_hash TEXT NOT NULL,
-    enabled     INTEGER NOT NULL DEFAULT 1,
-    created_at  INTEGER NOT NULL
+  app_id      TEXT PRIMARY KEY,
+  secret_hash TEXT NOT NULL,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL
 );
+
 CREATE TABLE IF NOT EXISTS app_from (
-    app_id    TEXT NOT NULL,
-    from_addr TEXT NOT NULL,
-    enabled   INTEGER NOT NULL DEFAULT 1,
-    PRIMARY KEY (app_id, from_addr),
-    FOREIGN KEY (app_id) REFERENCES apps(app_id) ON DELETE CASCADE
+  app_id    TEXT NOT NULL,
+  from_addr TEXT NOT NULL,
+  enabled   INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (app_id, from_addr),
+  FOREIGN KEY (app_id) REFERENCES apps(app_id) ON DELETE CASCADE
 );
 """
-
-def connect(db_path: str):
-    con = sqlite3.connect(db_path)
-    con.execute("PRAGMA foreign_keys=ON;")
-    con.execute("PRAGMA journal_mode=WAL;")
-    con.execute("PRAGMA synchronous=NORMAL;")
-    con.executescript(SCHEMA)
+    )
     return con
 
 def norm_email(s: str) -> str:
@@ -89,7 +98,7 @@ def cmd_aliases_list(con, username=None):
 
 def cmd_apps_add(con, app_id, password):
     app_id = norm_id(app_id)
-    secret_hash = argon2_hasher.hash(password)
+    secret_hash = f"{{ARGON2ID}}{argon2_hasher.hash(password)}"
     now = int(time.time())
     con.execute(
         "INSERT INTO apps(app_id, secret_hash, enabled, created_at) VALUES(?,?,1,?) "
@@ -125,11 +134,26 @@ def cmd_apps_list(con):
     ).fetchall()
     for app_id,en,ts in rows:
         print(f"{app_id}\t{'enabled' if en else 'disabled'}\t{ts}")
+        from_rows = con.execute(
+            "SELECT from_addr, enabled FROM app_from WHERE app_id=? ORDER BY from_addr",
+            (app_id,),
+        ).fetchall()
+        if from_rows:
+            parts = [f"{addr}" if en else f"{addr} (disabled)" for addr, en in from_rows]
+            print("\t\t" + ", ".join(parts))
+        else:
+            print("\t\t-")
+
+def cmd_init(db_path: str):
+    con = connect(db_path, create=True)
+    con.close()
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DEFAULT_DB)
     sub = ap.add_subparsers(dest="group", required=True)
+
+    p_init = sub.add_parser("init")
 
     aliases = sub.add_parser("aliases")
     aliases_sub = aliases.add_subparsers(dest="cmd", required=True)
@@ -168,6 +192,10 @@ def main():
     p_app_ls = apps_sub.add_parser("list")
 
     args = ap.parse_args()
+    if args.group == "init":
+        cmd_init(args.db)
+        return
+
     con = connect(args.db)
     try:
         if args.group == "aliases":

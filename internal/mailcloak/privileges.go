@@ -2,6 +2,7 @@ package mailcloak
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/user"
 	"strconv"
@@ -29,6 +30,7 @@ func DropPrivileges(cfg *Config) error {
 
 	euid := os.Geteuid()
 	if euid == uid {
+		log.Printf("privileges: already running as %s", userName)
 		return nil
 	}
 	if euid != 0 {
@@ -55,6 +57,8 @@ func DropPrivileges(cfg *Config) error {
 	if err := syscall.Setuid(uid); err != nil {
 		return fmt.Errorf("setuid: %w", err)
 	}
+
+	log.Printf("privileges: dropped to %s (uid=%d gid=%d)", userName, uid, gid)
 
 	return nil
 }

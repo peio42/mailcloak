@@ -2,6 +2,7 @@ package mailcloak
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/user"
 	"strconv"
@@ -27,5 +28,6 @@ func ChownChmodSocket(path string, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("bad socket_mode: %w", err)
 	}
+	log.Printf("socket perms: chown %s:%s mode %s on %s", cfg.Sockets.SocketOwnerUser, cfg.Sockets.SocketOwnerGroup, cfg.Sockets.SocketMode, path)
 	return os.Chmod(path, os.FileMode(mode))
 }

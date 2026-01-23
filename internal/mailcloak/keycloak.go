@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -43,18 +44,22 @@ func (k *Keycloak) token(ctx context.Context) (string, error) {
 
 	resp, err := k.hc.Do(req)
 	if err != nil {
+		log.Printf("keycloak token request error: %v", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		log.Printf("keycloak token non-2xx: %d", resp.StatusCode)
 		return "", fmt.Errorf("token http %d: %s", resp.StatusCode, string(b))
 	}
 	var tr tokenResp
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		log.Printf("keycloak token decode error: %v", err)
 		return "", err
 	}
 	if tr.AccessToken == "" {
+		log.Printf("keycloak token response missing access_token")
 		return "", fmt.Errorf("empty access_token")
 	}
 	return tr.AccessToken, nil
@@ -82,15 +87,18 @@ func (k *Keycloak) adminGet(ctx context.Context, bearer, path string, q url.Valu
 
 	resp, err := k.hc.Do(req)
 	if err != nil {
+		log.Printf("keycloak admin request error: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		log.Printf("keycloak admin non-2xx: %d", resp.StatusCode)
 		return nil, fmt.Errorf("admin http %d: %s", resp.StatusCode, string(b))
 	}
 	var users []kcUser
 	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		log.Printf("keycloak admin decode error: %v", err)
 		return nil, err
 	}
 	return users, nil
@@ -108,11 +116,13 @@ func (k *Keycloak) EmailByUsername(ctx context.Context, username string) (string
 	q.Set("exact", "true")
 	users, err := k.adminGet(ctx, bearer, "/users", q)
 	if err != nil {
+		log.Printf("keycloak admin exact username lookup failed for %s: %v", username, err)
 		// fallback: search
 		q2 := url.Values{}
 		q2.Set("search", username)
 		users, err = k.adminGet(ctx, bearer, "/users", q2)
 		if err != nil {
+			log.Printf("keycloak admin search username lookup failed for %s: %v", username, err)
 			return "", false, err
 		}
 	}
@@ -136,11 +146,13 @@ func (k *Keycloak) EmailExists(ctx context.Context, email string) (bool, error) 
 	q.Set("exact", "true")
 	users, err := k.adminGet(ctx, bearer, "/users", q)
 	if err != nil {
+		log.Printf("keycloak admin exact email lookup failed for %s: %v", email, err)
 		// fallback: search
 		q2 := url.Values{}
 		q2.Set("search", email)
 		users, err = k.adminGet(ctx, bearer, "/users", q2)
 		if err != nil {
+			log.Printf("keycloak admin search email lookup failed for %s: %v", email, err)
 			return false, err
 		}
 	}

@@ -51,11 +51,12 @@ func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 		_ = l.Close()
 		return nil, err
 	}
+	log.Printf("policy listener ready on %s", sock)
 
 	return l, nil
 }
 
-func ServePolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache, l net.Listener) error {
+func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, l net.Listener) error {
 	defer l.Close()
 
 	for {
@@ -65,6 +66,7 @@ func ServePolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, ca
 			case <-ctx.Done():
 				return nil
 			default:
+				log.Printf("policy accept error: %v", err)
 				return err
 			}
 		}
@@ -72,7 +74,7 @@ func ServePolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, ca
 	}
 }
 
-func RunPolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache) error {
+func RunPolicy(ctx context.Context, cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache) error {
 	l, err := OpenPolicyListener(cfg)
 	if err != nil {
 		return err
@@ -80,7 +82,7 @@ func RunPolicy(ctx context.Context, cfg *Config, db *AliasDB, kc *Keycloak, cach
 	return ServePolicy(ctx, cfg, db, kc, cache, l)
 }
 
-func handlePolicyConn(conn net.Conn, cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache) {
+func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache) {
 	defer conn.Close()
 	r := bufio.NewReader(conn)
 
@@ -99,6 +101,8 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *AliasDB, kc *Keycloak, cac
 		}
 	}
 
+	log.Printf("policy request: state=%s sasl=%s sender=%s rcpt=%s client=%s helo=%s", req["protocol_state"], req["sasl_username"], req["sender"], req["recipient"], req["client_address"], req["helo_name"])
+
 	// Decide based on protocol_state
 	state := req["protocol_state"] // e.g. RCPT, MAIL
 	saslUser := req["sasl_username"]
@@ -110,19 +114,28 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *AliasDB, kc *Keycloak, cac
 	switch state {
 	case "RCPT":
 		action = policyRCPT(cfg, db, kc, cache, rcpt)
-	case "MAIL":
-		// On MAIL stage we can validate sender if authenticated (submission)
-		if saslUser != "" && sender != "" {
+		if action == "DUNNO" {
 			action = policyMAIL(cfg, db, kc, cache, saslUser, sender)
 		}
+	case "MAIL":
+		// With "smtpd_delay_reject = yes" in Postfix, MAIL stage is bypassed
+		// So we move all checks to RCPT stage
+		action = "DUNNO"
+
+		// On MAIL stage we can validate sender if authenticated (submission)
+		//if saslUser != "" && sender != "" {
+		//	action = policyMAIL(cfg, db, kc, cache, saslUser, sender)
+		//}
 	default:
 		action = "DUNNO"
 	}
 
+	log.Printf("policy decision: state=%s action=%s sasl=%s sender=%s rcpt=%s", state, action, saslUser, sender, rcpt)
+
 	fmt.Fprintf(conn, "action=%s\n\n", action)
 }
 
-func policyRCPT(cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache, rcpt string) string {
+func policyRCPT(cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, rcpt string) string {
 	if rcpt == "" {
 		return "DUNNO"
 	}
@@ -142,6 +155,7 @@ func policyRCPT(cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache, rcpt strin
 		defer cancel()
 		exists, err := kc.EmailExists(ctx, rcpt)
 		if err != nil {
+			log.Printf("keycloak email exists lookup error for %s: %v", rcpt, err)
 			if cfg.Policy.KeycloakFailureMode == "dunno" {
 				return "DUNNO"
 			}
@@ -166,7 +180,7 @@ func policyRCPT(cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache, rcpt strin
 	return "550 5.1.1 No such user"
 }
 
-func policyMAIL(cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache, saslUser, sender string) string {
+func policyMAIL(cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, saslUser, sender string) string {
 	// Allow empty sender (bounce)
 	if sender == "" || sender == "<>" {
 		return "DUNNO"
@@ -184,6 +198,7 @@ func policyMAIL(cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache, saslUser, 
 		defer cancel()
 		e, exists, err := kc.EmailByUsername(ctx, saslUser)
 		if err != nil {
+			log.Printf("keycloak email-by-username lookup error for %s: %v", saslUser, err)
 			if cfg.Policy.KeycloakFailureMode == "dunno" {
 				return "DUNNO"
 			}
@@ -206,6 +221,18 @@ func policyMAIL(cfg *Config, db *AliasDB, kc *Keycloak, cache *Cache, saslUser, 
 	}
 	if belongs {
 		return "DUNNO"
+	}
+
+	// 3) sender is allowed for app (saslUser = app_id)
+	if saslUser != "" {
+		allowed, err := db.AppFromAllowed(saslUser, sender)
+		if err != nil {
+			log.Printf("sqlite app sender lookup error: %v", err)
+			return "451 4.3.0 Temporary internal error"
+		}
+		if allowed {
+			return "DUNNO"
+		}
 	}
 
 	return "553 5.7.1 Sender not owned by authenticated user"
