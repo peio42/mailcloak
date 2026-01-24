@@ -1,0 +1,96 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux]
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - name: Build arch-specific tarball
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "0"
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eux
+          mkdir -p dist
+          BIN="mailcloak-${GOOS}-${GOARCH}"
+
+          go build \
+            -trimpath \
+            -ldflags="-s -w -X main.version=${VERSION}" \
+            -o "dist/${BIN}" ./cmd/mailcloak
+
+          tar -C dist -czf "dist/${BIN}.tar.gz" "${BIN}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.goos }}-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout (for mailcloakctl)
+        uses: actions/checkout@v4
+
+      - name: Download all tarball artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-all
+
+      - name: Gather assets
+        run: |
+          set -eux
+          mkdir -p dist
+
+          find dist-all -type f -name "*.tar.gz" -exec cp -v {} dist/ \;
+          cp -v mailcloakctl dist/
+
+          ls -lah dist
+
+      - name: Generate checksums.txt (sha256)
+        run: |
+          set -eux
+          cd dist
+
+          LC_ALL=C sha256sum $(ls -1 | sort) > checksums.txt
+
+          echo "Generated checksums.txt:"
+          cat checksums.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/mailcloakctl
+            dist/checksums.txt
+          generate_release_notes: true
+          overwrite_files: true

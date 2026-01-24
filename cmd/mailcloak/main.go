@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -15,7 +14,7 @@ import (
 var version = "dev"
 
 func main() {
-	fmt.Printf("mailcloak %s\n", version)
+	log.Printf("mailcloak %s\n", version)
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
 		return
 	}
