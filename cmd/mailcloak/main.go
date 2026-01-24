@@ -11,7 +11,7 @@ import (
 	"mailcloak/internal/mailcloak"
 )
 
-var version = "dev"
+var version = "dev-" + time.Now().Format("20060102")
 
 func main() {
 	log.Printf("mailcloak %s\n", version)
