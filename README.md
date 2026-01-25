@@ -77,8 +77,8 @@ flowchart LR
 - `cmd/mailcloak/` – main package entrypoint
 - `internal/mailcloak/` – daemon sources
 - `go.mod` / `go.sum` – Go module files
-- `configs/config.yaml.sample` – sample config to copy to `/etc/mailcloak/config.yaml`
-- `configs/openrc-mailcloak` – OpenRC service file
+- `docs/configs/config.yaml.sample` – sample config to copy to `/etc/mailcloak/config.yaml`
+- `docs/configs/openrc-mailcloak` – OpenRC service file
 - `mailcloakctl` – Python CLI helper to manage database
 
 ## Build the binary
@@ -101,7 +101,7 @@ make run
 ```
 
 ## Configuration
-Sample configuration can be found in `configs/` folder.
+Sample configuration can be found in `docs/configs/` folder.
 
 Copy the sample config in `/etc/mailcloak/config.yaml` and edit it according to your environment.
 
@@ -162,7 +162,7 @@ socketmap:unix:private/mailcloak-socketmap:alias
 Use the provided service file to run Mailcloak as a service with OpenRC (e.g. Alpine Linux):
 
 ```bash
-cp configs/openrc-mailcloak /etc/init.d/mailcloak
+cp docs/configs/openrc-mailcloak /etc/init.d/mailcloak
 rc-update add mailcloak default
 rc-service mailcloak start
 ```
