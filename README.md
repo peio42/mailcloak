@@ -2,7 +2,7 @@
 
 Mailcloak is a Postfix policy service designed to secure and control mail flows by integrating Postfix, Dovecot, and Keycloak.
 
-It enables fine-grained authorization of mail senders and recipients based on identities managed in Keycloak, while remaining compatible with standard SMTP workflows. Mailcloak is particularly suited for a small modern mail infrastructures relying on OIDC authentication.
+It enables fine-grained authorization of mail senders and recipients based on identities managed in Keycloak, while remaining compatible with standard SMTP workflows. Mailcloak is particularly suited for small modern mail infrastructures relying on OIDC authentication.
 
 ## Why Mailcloak?
 

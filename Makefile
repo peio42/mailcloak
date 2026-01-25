@@ -5,7 +5,7 @@ BIN_DIR := bin
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-	go build -trimpath -ldflags="-s -w" -o bin/mailcloak ./cmd/mailcloak
+	go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)
 
 run:
 	go run ./cmd/$(BINARY)
