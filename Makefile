@@ -21,3 +21,4 @@ clean:
 
 install: build
 	sudo install -m 0755 $(BIN_DIR)/$(BINARY) /usr/local/sbin/$(BINARY)
+	sudo install -m 0755 mailcloakctl /usr/local/sbin/mailcloakctl

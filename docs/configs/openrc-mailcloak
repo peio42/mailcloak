@@ -6,6 +6,9 @@ command_args="/etc/mailcloak/config.yaml"
 command_background="yes"
 pidfile="/run/mailcloak.pid"
 
+output_log="/var/log/mailcloak/mailcloak.log"
+error_log="/var/log/mailcloak/mailcloak.err"
+
 depend() {
   need net
   after postfix
