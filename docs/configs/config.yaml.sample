@@ -26,4 +26,5 @@ sockets:
   socket_mode: "0660"
 
 daemon:
+  # mailcloak will drop privileges to this user once started
   user: "mailcloak"

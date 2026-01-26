@@ -1,0 +1,24 @@
+#
+# Configuration to add to /etc/postfix/main.cf
+#
+
+# Relay restrictions
+smtpd_relay_restrictions =
+  permit_sasl_authenticated,
+  reject_unauth_destination
+
+# Sender restrictions
+smtpd_sender_restrictions =
+  reject_non_fqdn_sender,
+  reject_unknown_sender_domain,
+  check_policy_service unix:private/mailcloak-policy
+
+# Recipient restrictions
+smtpd_recipient_restrictions =
+  reject_non_fqdn_recipient,
+  reject_unknown_recipient_domain,
+  check_policy_service unix:private/mailcloak-policy,
+  permit
+
+# Dynamic aliases via socketmap
+virtual_alias_maps = socketmap:unix:private/mailcloak-socketmap:alias
