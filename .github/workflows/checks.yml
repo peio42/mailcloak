@@ -9,14 +9,14 @@ permissions:
   contents: read
 
 jobs:
-  go-checks:
-    name: Go tests
+  checks:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ---- Go checks ----
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -33,3 +33,17 @@ jobs:
 
       - name: Go test (race)
         run: go test -race ./...
+
+      # ---- Python checks ----
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Python syntax check
+        run: python -m compileall mailcloakctl
+
+      - name: Python lint (ruff)
+        run: |
+          pip install ruff
+          ruff check mailcloakctl
