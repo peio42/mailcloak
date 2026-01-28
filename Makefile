@@ -11,7 +11,11 @@ run:
 	go run ./cmd/$(BINARY)
 
 test:
-	go test ./...
+	gofmt -l .
+	go vet ./...
+	go test -race ./...
+	python -m compileall mailcloakctl
+	ruff check mailcloakctl
 
 tidy:
 	go mod tidy

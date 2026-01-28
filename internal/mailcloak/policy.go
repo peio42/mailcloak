@@ -16,6 +16,11 @@ type Cache struct {
 	m   map[string]cacheItem
 }
 
+type IdentityResolver interface {
+	EmailByUsername(ctx context.Context, username string) (string, bool, error)
+	EmailExists(ctx context.Context, email string) (bool, error)
+}
+
 type cacheItem struct {
 	val     string
 	expires time.Time
@@ -56,7 +61,7 @@ func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 	return l, nil
 }
 
-func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, l net.Listener) error {
+func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache, l net.Listener) error {
 	defer l.Close()
 
 	for {
@@ -70,19 +75,19 @@ func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, kc *Keycloak
 				return err
 			}
 		}
-		go handlePolicyConn(conn, cfg, db, kc, cache)
+		go handlePolicyConn(conn, cfg, db, idp, cache)
 	}
 }
 
-func RunPolicy(ctx context.Context, cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache) error {
+func RunPolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache) error {
 	l, err := OpenPolicyListener(cfg)
 	if err != nil {
 		return err
 	}
-	return ServePolicy(ctx, cfg, db, kc, cache, l)
+	return ServePolicy(ctx, cfg, db, idp, cache, l)
 }
 
-func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache) {
+func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache) {
 	defer conn.Close()
 	r := bufio.NewReader(conn)
 
@@ -113,9 +118,9 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, kc *Keycloak,
 
 	switch state {
 	case "RCPT":
-		action = policyRCPT(cfg, db, kc, cache, rcpt)
+		action = policyRCPT(cfg, db, idp, cache, rcpt)
 		if action == "DUNNO" {
-			action = policyMAIL(cfg, db, kc, cache, saslUser, sender)
+			action = policyMAIL(cfg, db, idp, cache, saslUser, sender)
 		}
 	case "MAIL":
 		// With "smtpd_delay_reject = yes" in Postfix, MAIL stage is bypassed
@@ -124,7 +129,7 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, kc *Keycloak,
 
 		// On MAIL stage we can validate sender if authenticated (submission)
 		//if saslUser != "" && sender != "" {
-		//	action = policyMAIL(cfg, db, kc, cache, saslUser, sender)
+		//	action = policyMAIL(cfg, db, idp, cache, saslUser, sender)
 		//}
 	default:
 		action = "DUNNO"
@@ -135,7 +140,7 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, kc *Keycloak,
 	fmt.Fprintf(conn, "action=%s\n\n", action)
 }
 
-func policyRCPT(cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, rcpt string) string {
+func policyRCPT(cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache, rcpt string) string {
 	if rcpt == "" {
 		return "DUNNO"
 	}
@@ -153,7 +158,7 @@ func policyRCPT(cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, rcpt s
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		exists, err := kc.EmailExists(ctx, rcpt)
+		exists, err := idp.EmailExists(ctx, rcpt)
 		if err != nil {
 			log.Printf("keycloak email exists lookup error for %s: %v", rcpt, err)
 			if cfg.Policy.KeycloakFailureMode == "dunno" {
@@ -180,7 +185,7 @@ func policyRCPT(cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, rcpt s
 	return "550 5.1.1 No such user"
 }
 
-func policyMAIL(cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, saslUser, sender string) string {
+func policyMAIL(cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache, saslUser, sender string) string {
 	// Allow empty sender (bounce)
 	if sender == "" || sender == "<>" {
 		return "DUNNO"
@@ -196,7 +201,7 @@ func policyMAIL(cfg *Config, db *MailcloakDB, kc *Keycloak, cache *Cache, saslUs
 	if !hit {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		e, exists, err := kc.EmailByUsername(ctx, saslUser)
+		e, exists, err := idp.EmailByUsername(ctx, saslUser)
 		if err != nil {
 			log.Printf("keycloak email-by-username lookup error for %s: %v", saslUser, err)
 			if cfg.Policy.KeycloakFailureMode == "dunno" {

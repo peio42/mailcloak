@@ -13,3 +13,6 @@ vendor/   # sauf si tu utilises volontairement vendoring
 
 # Local config files
 config.yaml
+
+# Checks
+.ruff_cache/
