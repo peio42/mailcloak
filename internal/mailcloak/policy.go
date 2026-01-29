@@ -119,18 +119,19 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityR
 	switch state {
 	case "RCPT":
 		action = policyRCPT(cfg, db, idp, cache, rcpt)
+
+		// With "smtpd_delay_reject = yes" in Postfix, MAIL stage is bypassed
+		// So we move all checks to RCPT stage
 		if action == "DUNNO" {
 			action = policyMAIL(cfg, db, idp, cache, saslUser, sender)
 		}
-	case "MAIL":
-		// With "smtpd_delay_reject = yes" in Postfix, MAIL stage is bypassed
-		// So we move all checks to RCPT stage
-		action = "DUNNO"
 
-		// On MAIL stage we can validate sender if authenticated (submission)
-		//if saslUser != "" && sender != "" {
-		//	action = policyMAIL(cfg, db, idp, cache, saslUser, sender)
-		//}
+	// case "MAIL":
+	//   // On MAIL stage we can validate sender if authenticated (submission)
+	//   if saslUser != "" && sender != "" {
+	//	    action = policyMAIL(cfg, db, idp, cache, saslUser, sender)
+	//    }
+
 	default:
 		action = "DUNNO"
 	}
