@@ -17,8 +17,7 @@ smtpd_sender_restrictions =
 smtpd_recipient_restrictions =
   reject_non_fqdn_recipient,
   reject_unknown_recipient_domain,
-  check_policy_service unix:private/mailcloak-policy,
-  permit
+  check_policy_service unix:private/mailcloak-policy
 
 # Dynamic aliases via socketmap
 virtual_alias_maps = socketmap:unix:private/mailcloak-socketmap:alias
