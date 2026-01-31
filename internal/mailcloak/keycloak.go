@@ -13,15 +13,45 @@ import (
 )
 
 type Keycloak struct {
-	cfg *Config
-	hc  *http.Client
+	cfg   *Config
+	hc    *http.Client
+	cache *Cache
 }
 
 func NewKeycloak(cfg *Config) *Keycloak {
+	ttl := time.Duration(cfg.Policy.CacheTTLSeconds) * time.Second
 	return &Keycloak{
-		cfg: cfg,
-		hc:  &http.Client{Timeout: 5 * time.Second},
+		cfg:   cfg,
+		hc:    &http.Client{Timeout: 5 * time.Second},
+		cache: NewCache(ttl),
 	}
+}
+
+type Cache struct {
+	ttl time.Duration
+	m   map[string]cacheItem
+}
+
+type cacheItem struct {
+	val     string
+	expires time.Time
+	ok      bool
+}
+
+func NewCache(ttl time.Duration) *Cache {
+	return &Cache{ttl: ttl, m: make(map[string]cacheItem)}
+}
+
+func (c *Cache) Get(key string) (string, bool, bool) {
+	it, ok := c.m[key]
+	if !ok || time.Now().After(it.expires) {
+		return "", false, false
+	}
+	return it.val, it.ok, true
+}
+
+func (c *Cache) Put(key, val string, ok bool) {
+	c.m[key] = cacheItem{val: val, ok: ok, expires: time.Now().Add(c.ttl)}
 }
 
 type tokenResp struct {
@@ -104,39 +134,53 @@ func (k *Keycloak) adminGet(ctx context.Context, bearer, path string, q url.Valu
 	return users, nil
 }
 
-// Find primary email by username (exact if supported)
-func (k *Keycloak) EmailByUsername(ctx context.Context, username string) (string, bool, error) {
+// Find primary email of user (username/uuid)
+func (k *Keycloak) ResolveUserEmail(ctx context.Context, user string) (string, bool, error) {
+	key := "email_by_user:" + strings.ToLower(user)
+	if email, ok, hit := k.cache.Get(key); hit {
+		return email, ok, nil
+	}
+
 	bearer, err := k.token(ctx)
 	if err != nil {
 		return "", false, err
 	}
 
+	// Exact username match - Expect future option using uuid
 	q := url.Values{}
-	q.Set("username", username)
+	q.Set("username", user)
 	q.Set("exact", "true")
 	users, err := k.adminGet(ctx, bearer, "/users", q)
 	if err != nil {
-		log.Printf("keycloak admin exact username lookup failed for %s: %v", username, err)
+		log.Printf("keycloak admin exact username lookup failed for %s: %v", user, err)
 		// fallback: search
 		q2 := url.Values{}
-		q2.Set("search", username)
+		q2.Set("search", user)
 		users, err = k.adminGet(ctx, bearer, "/users", q2)
 		if err != nil {
-			log.Printf("keycloak admin search username lookup failed for %s: %v", username, err)
+			log.Printf("keycloak admin search username lookup failed for %s: %v", user, err)
 			return "", false, err
 		}
 	}
 
 	for _, u := range users {
-		if strings.EqualFold(u.Username, username) && u.Enabled && u.Email != "" {
-			return strings.ToLower(u.Email), true, nil
+		if strings.EqualFold(u.Username, user) && u.Enabled && u.Email != "" {
+			email := strings.ToLower(u.Email)
+			k.cache.Put(key, email, true)
+			return email, true, nil
 		}
 	}
+	k.cache.Put(key, "", false)
 	return "", false, nil
 }
 
 // Check if an email exists as primary user email
 func (k *Keycloak) EmailExists(ctx context.Context, email string) (bool, error) {
+	key := "email_exists:" + strings.ToLower(email)
+	if _, ok, hit := k.cache.Get(key); hit {
+		return ok, nil
+	}
+
 	bearer, err := k.token(ctx)
 	if err != nil {
 		return false, err
@@ -158,8 +202,10 @@ func (k *Keycloak) EmailExists(ctx context.Context, email string) (bool, error) 
 	}
 	for _, u := range users {
 		if u.Enabled && strings.EqualFold(u.Email, email) {
+			k.cache.Put(key, "", true)
 			return true, nil
 		}
 	}
+	k.cache.Put(key, "", false)
 	return false, nil
 }

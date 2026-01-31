@@ -11,8 +11,11 @@ func TestAliasOwnerAndBelongsTo(t *testing.T) {
 	defer sqlDB.Close()
 
 	db := &MailcloakDB{DB: sqlDB}
+	testutil.InsertDomain(t, sqlDB, "example.com", true)
+	testutil.InsertDomain(t, sqlDB, "other.com", true)
 	testutil.InsertAlias(t, sqlDB, "enabled@example.com", "alice", true)
 	testutil.InsertAlias(t, sqlDB, "disabled@example.com", "alice", false)
+	testutil.InsertAlias(t, sqlDB, "enabled@other.com", "alice", true)
 
 	owner, ok, err := db.AliasOwner("enabled@example.com")
 	if err != nil {
@@ -20,6 +23,14 @@ func TestAliasOwnerAndBelongsTo(t *testing.T) {
 	}
 	if !ok || owner != "alice" {
 		t.Fatalf("expected owner alice, ok true, got owner=%q ok=%v", owner, ok)
+	}
+
+	owner, ok, err = db.AliasOwner("enabled@other.com")
+	if err != nil {
+		t.Fatalf("AliasOwner error: %v", err)
+	}
+	if !ok || owner != "alice" {
+		t.Fatalf("expected owner alice for other domain, ok true, got owner=%q ok=%v", owner, ok)
 	}
 
 	_, ok, err = db.AliasOwner("disabled@example.com")
@@ -105,5 +116,38 @@ func TestAppFromAllowed(t *testing.T) {
 	}
 	if allowed {
 		t.Fatalf("expected missing app to not be allowed")
+	}
+}
+
+func TestDomainEnabled(t *testing.T) {
+	sqlDB := testutil.NewSQLiteDB(t)
+	defer sqlDB.Close()
+
+	db := &MailcloakDB{DB: sqlDB}
+	testutil.InsertDomain(t, sqlDB, "example.com", true)
+	testutil.InsertDomain(t, sqlDB, "disabled.com", false)
+
+	local, err := db.DomainEnabled("example.com")
+	if err != nil {
+		t.Fatalf("DomainEnabled error: %v", err)
+	}
+	if !local {
+		t.Fatalf("expected example.com to be enabled")
+	}
+
+	local, err = db.DomainEnabled("disabled.com")
+	if err != nil {
+		t.Fatalf("DomainEnabled error: %v", err)
+	}
+	if local {
+		t.Fatalf("expected disabled.com to be disabled")
+	}
+
+	local, err = db.DomainEnabled("missing.com")
+	if err != nil {
+		t.Fatalf("DomainEnabled error: %v", err)
+	}
+	if local {
+		t.Fatalf("expected missing.com to be false")
 	}
 }

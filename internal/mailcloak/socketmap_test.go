@@ -24,13 +24,14 @@ func TestSocketmapFrameRoundTrip(t *testing.T) {
 }
 
 func TestHandleSocketmapConn(t *testing.T) {
-	cfg := &Config{}
-	cfg.Policy.Domain = "example.com"
-
 	db := testutil.NewSQLiteDB(t)
 	defer db.Close()
 	mailDB := &MailcloakDB{DB: db}
+	testutil.InsertDomain(t, db, "example.com", true)
+	testutil.InsertDomain(t, db, "other-local.com", true)
+	testutil.InsertDomain(t, db, "disabled.com", false)
 	testutil.InsertAlias(t, db, "alias@example.com", "alice", true)
+	testutil.InsertAlias(t, db, "alias@other-local.com", "alice", true)
 
 	roundTrip := func(t *testing.T, payload string) string {
 		client, server := net.Pipe()
@@ -38,7 +39,7 @@ func TestHandleSocketmapConn(t *testing.T) {
 
 		done := make(chan struct{})
 		go func() {
-			handleSocketmapConn(server, cfg, mailDB)
+			handleSocketmapConn(server, mailDB)
 			close(done)
 		}()
 
@@ -60,7 +61,9 @@ func TestHandleSocketmapConn(t *testing.T) {
 		expect  string
 	}{
 		{name: "alias found", payload: "alias alias@example.com", expect: "OK alice@example.com"},
+		{name: "alias found other local domain", payload: "alias alias@other-local.com", expect: "OK alice@other-local.com"},
 		{name: "other domain", payload: "alias other@other.com", expect: "NOTFOUND"},
+		{name: "disabled local domain", payload: "alias user@disabled.com", expect: "NOTFOUND"},
 		{name: "wrong map", payload: "virtual alias@example.com", expect: "NOTFOUND"},
 		{name: "empty payload", payload: "", expect: "NOTFOUND"},
 	}

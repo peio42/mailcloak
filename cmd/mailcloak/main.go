@@ -58,7 +58,6 @@ func main() {
 	defer db.Close()
 
 	kc := mailcloak.NewKeycloak(cfg)
-	cache := mailcloak.NewCache(time.Duration(cfg.Policy.CacheTTLSeconds) * time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -66,7 +65,7 @@ func main() {
 	// Start socketmap server
 	go func() {
 		log.Printf("socketmap server started")
-		if err := mailcloak.ServeSocketmap(ctx, cfg, db, socketmapListener); err != nil {
+		if err := mailcloak.ServeSocketmap(ctx, db, socketmapListener); err != nil {
 			log.Fatalf("socketmap: %v", err)
 		}
 	}()
@@ -74,7 +73,7 @@ func main() {
 	// Start policy server
 	go func() {
 		log.Printf("policy server started")
-		if err := mailcloak.ServePolicy(ctx, cfg, db, kc, cache, policyListener); err != nil {
+		if err := mailcloak.ServePolicy(ctx, cfg, db, kc, policyListener); err != nil {
 			log.Fatalf("policy: %v", err)
 		}
 	}()

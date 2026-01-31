@@ -4,34 +4,45 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
 )
 
 const schemaSQL = `
-CREATE TABLE IF NOT EXISTS aliases (
-  alias_email TEXT PRIMARY KEY,
-  username    TEXT NOT NULL,
-  enabled     INTEGER NOT NULL DEFAULT 1,
-  updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+CREATE TABLE IF NOT EXISTS domains (
+	domain_name TEXT PRIMARY KEY,
+	enabled     INTEGER NOT NULL DEFAULT 1
 );
 
-CREATE INDEX IF NOT EXISTS idx_aliases_username ON aliases(username);
+CREATE TABLE IF NOT EXISTS aliases (
+	alias_email       TEXT PRIMARY KEY,
+	target_user       TEXT NOT NULL,
+
+	alias_domain_name TEXT NOT NULL,
+
+	enabled           INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+	updated_at        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+
+	FOREIGN KEY (alias_domain_name) REFERENCES domains(domain_name) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_aliases_username ON aliases(target_user);
 
 CREATE TABLE IF NOT EXISTS apps (
-  app_id      TEXT PRIMARY KEY,
-  secret_hash TEXT NOT NULL,
-  enabled     INTEGER NOT NULL DEFAULT 1,
-  created_at  INTEGER NOT NULL
+	app_id      TEXT PRIMARY KEY,
+	secret_hash TEXT NOT NULL,
+	enabled     INTEGER NOT NULL DEFAULT 1,
+	created_at  INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS app_from (
-  app_id    TEXT NOT NULL,
-  from_addr TEXT NOT NULL,
-  enabled   INTEGER NOT NULL DEFAULT 1,
-  PRIMARY KEY (app_id, from_addr),
-  FOREIGN KEY (app_id) REFERENCES apps(app_id) ON DELETE CASCADE
+	app_id    TEXT NOT NULL,
+	from_addr TEXT NOT NULL,
+	enabled   INTEGER NOT NULL DEFAULT 1,
+	PRIMARY KEY (app_id, from_addr),
+	FOREIGN KEY (app_id) REFERENCES apps(app_id) ON DELETE CASCADE
 );
 `
 
@@ -62,11 +73,16 @@ PRAGMA synchronous=NORMAL;
 
 func InsertAlias(t *testing.T, db *sql.DB, aliasEmail, username string, enabled bool) {
 	t.Helper()
+	parts := strings.SplitN(aliasEmail, "@", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		t.Fatalf("insert alias: invalid alias email %q", aliasEmail)
+	}
+	domain := parts[1]
 	en := 0
 	if enabled {
 		en = 1
 	}
-	_, err := db.Exec(`INSERT INTO aliases(alias_email, username, enabled, updated_at) VALUES(?,?,?,strftime('%s','now'))`, aliasEmail, username, en)
+	_, err := db.Exec(`INSERT INTO aliases(alias_email, target_user, alias_domain_name, enabled, updated_at) VALUES(?,?,?,?,strftime('%s','now'))`, aliasEmail, username, domain, en)
 	if err != nil {
 		t.Fatalf("insert alias: %v", err)
 	}
@@ -93,5 +109,17 @@ func InsertAppFrom(t *testing.T, db *sql.DB, appID, fromAddr string, enabled boo
 	_, err := db.Exec(`INSERT INTO app_from(app_id, from_addr, enabled) VALUES(?,?,?)`, appID, fromAddr, en)
 	if err != nil {
 		t.Fatalf("insert app_from: %v", err)
+	}
+}
+
+func InsertDomain(t *testing.T, db *sql.DB, domain string, enabled bool) {
+	t.Helper()
+	en := 0
+	if enabled {
+		en = 1
+	}
+	_, err := db.Exec(`INSERT INTO domains(domain_name, enabled) VALUES(?,?)`, domain, en)
+	if err != nil {
+		t.Fatalf("insert domain: %v", err)
 	}
 }

@@ -2,6 +2,13 @@
 # Configuration to add to /etc/postfix/main.cf
 #
 
+# Local domains
+virtual_mailbox_domains = sqlite:/etc/postfix/sql/virtual_mailbox_domains.cf
+
+# /etc/postfix/sql/virtual_mailbox_domains.cf:
+# dbpath = /var/lib/mailcloak/state.db
+# query = SELECT 1 FROM domains WHERE domain_name = '%s' AND enabled = 1;
+
 # Relay restrictions
 smtpd_relay_restrictions =
   permit_sasl_authenticated,

@@ -25,7 +25,6 @@ type Config struct {
 	} `yaml:"sqlite"`
 
 	Policy struct {
-		Domain              string `yaml:"domain"`
 		CacheTTLSeconds     int    `yaml:"cache_ttl_seconds"`
 		KeycloakFailureMode string `yaml:"keycloak_failure_mode"` // "tempfail" or "dunno"
 	} `yaml:"policy"`
@@ -53,9 +52,6 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.SQLite.Path == "" {
 		return nil, fmt.Errorf("missing sqlite.path")
-	}
-	if cfg.Policy.Domain == "" {
-		return nil, fmt.Errorf("missing policy.domain")
 	}
 	if cfg.Policy.CacheTTLSeconds <= 0 {
 		cfg.Policy.CacheTTLSeconds = 120
