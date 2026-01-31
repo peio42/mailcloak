@@ -20,7 +20,7 @@ func newTestKeycloak(t *testing.T, handler http.HandlerFunc) (*Keycloak, *httpte
 	return NewKeycloak(cfg), srv
 }
 
-func TestKeycloakEmailByUsernameExact(t *testing.T) {
+func TestKeycloakResolveUserEmailExact(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/realms/realm/protocol/openid-connect/token":
@@ -50,16 +50,16 @@ func TestKeycloakEmailByUsernameExact(t *testing.T) {
 	kc, srv := newTestKeycloak(t, handler)
 	defer srv.Close()
 
-	email, ok, err := kc.EmailByUsername(context.Background(), "bob")
+	email, ok, err := kc.ResolveUserEmail(context.Background(), "bob")
 	if err != nil {
-		t.Fatalf("EmailByUsername error: %v", err)
+		t.Fatalf("ResolveUserEmail error: %v", err)
 	}
 	if !ok || email != "bob@example.com" {
 		t.Fatalf("expected bob@example.com ok true, got email=%q ok=%v", email, ok)
 	}
 }
 
-func TestKeycloakEmailByUsernameFallbackSearch(t *testing.T) {
+func TestKeycloakResolveUserEmailFallbackSearch(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/realms/realm/protocol/openid-connect/token":
@@ -92,9 +92,9 @@ func TestKeycloakEmailByUsernameFallbackSearch(t *testing.T) {
 	kc, srv := newTestKeycloak(t, handler)
 	defer srv.Close()
 
-	email, ok, err := kc.EmailByUsername(context.Background(), "bob")
+	email, ok, err := kc.ResolveUserEmail(context.Background(), "bob")
 	if err != nil {
-		t.Fatalf("EmailByUsername error: %v", err)
+		t.Fatalf("ResolveUserEmail error: %v", err)
 	}
 	if !ok || email != "bob@example.com" {
 		t.Fatalf("expected bob@example.com ok true, got email=%q ok=%v", email, ok)
@@ -239,9 +239,9 @@ func TestKeycloakAdminQueryEncoding(t *testing.T) {
 	kc, srv := newTestKeycloak(t, handler)
 	defer srv.Close()
 
-	_, _, err := kc.EmailByUsername(context.Background(), "bob")
+	_, _, err := kc.ResolveUserEmail(context.Background(), "bob")
 	if err != nil {
-		t.Fatalf("EmailByUsername error: %v", err)
+		t.Fatalf("ResolveUserEmail error: %v", err)
 	}
 	if gotQuery.Get("username") != "bob" || gotQuery.Get("exact") != "true" {
 		t.Fatalf("unexpected query: %v", gotQuery)

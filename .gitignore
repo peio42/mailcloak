@@ -3,16 +3,14 @@
 /dist/
 *.exe
 
-# Go build cache (jamais versionné)
+# Go build cache
 pkg/
-vendor/   # sauf si tu utilises volontairement vendoring
+vendor/
 
 # IDE
 .idea/
 .vscode/
-
-# Local config files
-config.yaml
+.venv/
 
 # Checks
 .ruff_cache/

@@ -11,36 +11,9 @@ import (
 	"time"
 )
 
-type Cache struct {
-	ttl time.Duration
-	m   map[string]cacheItem
-}
-
 type IdentityResolver interface {
-	EmailByUsername(ctx context.Context, username string) (string, bool, error)
+	ResolveUserEmail(ctx context.Context, user string) (string, bool, error)
 	EmailExists(ctx context.Context, email string) (bool, error)
-}
-
-type cacheItem struct {
-	val     string
-	expires time.Time
-	ok      bool
-}
-
-func NewCache(ttl time.Duration) *Cache {
-	return &Cache{ttl: ttl, m: make(map[string]cacheItem)}
-}
-
-func (c *Cache) Get(key string) (string, bool, bool) {
-	it, ok := c.m[key]
-	if !ok || time.Now().After(it.expires) {
-		return "", false, false
-	}
-	return it.val, it.ok, true
-}
-
-func (c *Cache) Put(key, val string, ok bool) {
-	c.m[key] = cacheItem{val: val, ok: ok, expires: time.Now().Add(c.ttl)}
 }
 
 func OpenPolicyListener(cfg *Config) (net.Listener, error) {
@@ -61,7 +34,7 @@ func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 	return l, nil
 }
 
-func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache, l net.Listener) error {
+func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, l net.Listener) error {
 	defer l.Close()
 
 	for {
@@ -75,19 +48,19 @@ func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp Identity
 				return err
 			}
 		}
-		go handlePolicyConn(conn, cfg, db, idp, cache)
+		go handlePolicyConn(conn, cfg, db, idp)
 	}
 }
 
-func RunPolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache) error {
+func RunPolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver) error {
 	l, err := OpenPolicyListener(cfg)
 	if err != nil {
 		return err
 	}
-	return ServePolicy(ctx, cfg, db, idp, cache, l)
+	return ServePolicy(ctx, cfg, db, idp, l)
 }
 
-func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache) {
+func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityResolver) {
 	defer conn.Close()
 	r := bufio.NewReader(conn)
 
@@ -118,18 +91,18 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityR
 
 	switch state {
 	case "RCPT":
-		action = policyRCPT(cfg, db, idp, cache, rcpt)
+		action = policyRCPT(cfg, db, idp, rcpt)
 
 		// With "smtpd_delay_reject = yes" in Postfix, MAIL stage is bypassed
 		// So we move all checks to RCPT stage
 		if action == "DUNNO" {
-			action = policyMAIL(cfg, db, idp, cache, saslUser, sender)
+			action = policyMAIL(cfg, db, idp, saslUser, sender)
 		}
 
 	// case "MAIL":
 	//   // On MAIL stage we can validate sender if authenticated (submission)
-	//   if saslUser != "" && sender != "" {
-	//	    action = policyMAIL(cfg, db, idp, cache, saslUser, sender)
+	//	   if saslUser != "" && sender != "" {
+	//	    action = policyMAIL(cfg, db, idp, saslUser, sender)
 	//    }
 
 	default:
@@ -141,77 +114,81 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityR
 	fmt.Fprintf(conn, "action=%s\n\n", action)
 }
 
-func policyRCPT(cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache, rcpt string) string {
+func policyRCPT(cfg *Config, db *MailcloakDB, idp IdentityResolver, rcpt string) string {
 	if rcpt == "" {
 		return "DUNNO"
 	}
-	// Only enforce for our domain
-	if !strings.HasSuffix(rcpt, "@"+strings.ToLower(cfg.Policy.Domain)) {
+	// Only enforce for our local domains
+	domain, ok := domainFromEmail(rcpt)
+	if !ok {
+		return "DUNNO"
+	}
+	local, err := db.DomainEnabled(domain)
+	if err != nil {
+		log.Printf("sqlite domain lookup error: %v", err)
+		return "451 4.3.0 Temporary internal error"
+	}
+	if !local {
 		return "DUNNO"
 	}
 
 	// 1) exists in keycloak primary email?
-	key := "email_exists:" + rcpt
-	if _, ok, hit := cache.Get(key); hit {
-		if ok {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	exists, err := idp.EmailExists(ctx, rcpt)
+	if err != nil {
+		log.Printf("keycloak email exists lookup error for %s: %v", rcpt, err)
+		if cfg.Policy.KeycloakFailureMode == "dunno" {
 			return "DUNNO"
 		}
-	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		exists, err := idp.EmailExists(ctx, rcpt)
-		if err != nil {
-			log.Printf("keycloak email exists lookup error for %s: %v", rcpt, err)
-			if cfg.Policy.KeycloakFailureMode == "dunno" {
-				return "DUNNO"
-			}
-			return "451 4.3.0 Temporary authentication/lookup failure"
-		}
-		cache.Put(key, "", exists)
-		if exists {
-			return "DUNNO"
-		}
+		return "451 4.3.0 Temporary authentication/lookup failure"
+	}
+	if exists {
+		return "DUNNO"
 	}
 
 	// 2) exists as sqlite alias?
-	_, ok, err := db.AliasOwner(rcpt)
+	_, aliasOk, err := db.AliasOwner(rcpt)
 	if err != nil {
 		log.Printf("sqlite rcpt lookup error: %v", err)
 		return "451 4.3.0 Temporary internal error"
 	}
-	if ok {
+	if aliasOk {
 		return "DUNNO"
 	}
 
 	return "550 5.1.1 No such user"
 }
 
-func policyMAIL(cfg *Config, db *MailcloakDB, idp IdentityResolver, cache *Cache, saslUser, sender string) string {
+func policyMAIL(cfg *Config, db *MailcloakDB, idp IdentityResolver, saslUser, sender string) string {
 	// Allow empty sender (bounce)
 	if sender == "" || sender == "<>" {
 		return "DUNNO"
 	}
 	// Only enforce our domain senders (optional)
-	if !strings.HasSuffix(sender, "@"+strings.ToLower(cfg.Policy.Domain)) {
+	domain, ok := domainFromEmail(sender)
+	if !ok {
+		return "DUNNO"
+	}
+	local, err := db.DomainEnabled(domain)
+	if err != nil {
+		log.Printf("sqlite domain lookup error: %v", err)
+		return "451 4.3.0 Temporary internal error"
+	}
+	if !local {
 		return "DUNNO"
 	}
 
-	// primary email from keycloak (cached)
-	key := "email_by_username:" + strings.ToLower(saslUser)
-	email, ok, hit := cache.Get(key)
-	if !hit {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		e, exists, err := idp.EmailByUsername(ctx, saslUser)
-		if err != nil {
-			log.Printf("keycloak email-by-username lookup error for %s: %v", saslUser, err)
-			if cfg.Policy.KeycloakFailureMode == "dunno" {
-				return "DUNNO"
-			}
-			return "451 4.3.0 Temporary authentication/lookup failure"
+	// primary email from keycloak
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	email, ok, err := idp.ResolveUserEmail(ctx, saslUser)
+	if err != nil {
+		log.Printf("keycloak email-by-user lookup error for %s: %v", saslUser, err)
+		if cfg.Policy.KeycloakFailureMode == "dunno" {
+			return "DUNNO"
 		}
-		cache.Put(key, e, exists)
-		email, ok = e, exists
+		return "451 4.3.0 Temporary authentication/lookup failure"
 	}
 
 	// 1) sender == primary email

@@ -38,11 +38,27 @@ PRAGMA synchronous=NORMAL;
 
 func (a *MailcloakDB) Close() error { return a.DB.Close() }
 
-// Returns username owning alias, ok
-func (a *MailcloakDB) AliasOwner(aliasEmail string) (string, bool, error) {
-	var username string
+// Returns true if domain exists and is enabled
+func (a *MailcloakDB) DomainEnabled(domain string) (bool, error) {
+	if domain == "" {
+		return false, nil
+	}
 	var enabled int
-	err := a.DB.QueryRow(`SELECT username, enabled FROM aliases WHERE alias_email=?`, aliasEmail).Scan(&username, &enabled)
+	err := a.DB.QueryRow(`SELECT enabled FROM domains WHERE domain_name=?`, strings.ToLower(domain)).Scan(&enabled)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return enabled == 1, nil
+}
+
+// Returns email owning alias, ok
+func (a *MailcloakDB) AliasOwner(aliasEmail string) (string, bool, error) {
+	var user string
+	var enabled int
+	err := a.DB.QueryRow(`SELECT target_user, enabled FROM aliases WHERE alias_email=?`, aliasEmail).Scan(&user, &enabled)
 	if err == sql.ErrNoRows {
 		return "", false, nil
 	}
@@ -52,13 +68,13 @@ func (a *MailcloakDB) AliasOwner(aliasEmail string) (string, bool, error) {
 	if enabled != 1 {
 		return "", false, nil
 	}
-	return username, true, nil
+	return user, true, nil
 }
 
-// Returns true if alias belongs to username
-func (a *MailcloakDB) AliasBelongsTo(aliasEmail, username string) (bool, error) {
+// Returns true if alias belongs to user
+func (a *MailcloakDB) AliasBelongsTo(aliasEmail, user string) (bool, error) {
 	var enabled int
-	err := a.DB.QueryRow(`SELECT enabled FROM aliases WHERE alias_email=? AND username=?`, aliasEmail, username).Scan(&enabled)
+	err := a.DB.QueryRow(`SELECT enabled FROM aliases WHERE alias_email=? AND target_user=?`, aliasEmail, user).Scan(&enabled)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
