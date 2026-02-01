@@ -22,29 +22,121 @@ def connect(db_path: str, create: bool = False):
     con.execute("PRAGMA synchronous=NORMAL;")
     con.executescript(
         """
-CREATE TABLE IF NOT EXISTS aliases (
-  alias_email TEXT PRIMARY KEY,
-  username    TEXT NOT NULL,
-  enabled     INTEGER NOT NULL DEFAULT 1,
-  updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+CREATE TABLE IF NOT EXISTS domains (
+    domain_name TEXT PRIMARY KEY,
+    enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_aliases_username ON aliases(username);
+CREATE TRIGGER IF NOT EXISTS trg_domains_set_updated_at
+AFTER UPDATE ON domains
+FOR EACH ROW
+WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE domains
+    SET updated_at = strftime('%s','now')
+    WHERE domain_name = NEW.domain_name;
+END;
+
+
+CREATE TABLE IF NOT EXISTS aliases (
+    alias_email       TEXT PRIMARY KEY,
+    target_user       TEXT NOT NULL,
+
+    alias_domain_name TEXT NOT NULL,
+
+    enabled           INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    updated_at        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+
+    FOREIGN KEY (alias_domain_name) REFERENCES domains(domain_name) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_aliases_target_user ON aliases(target_user);
+CREATE INDEX IF NOT EXISTS idx_aliases_alias_domain ON aliases(alias_domain_name);
+
+CREATE TRIGGER IF NOT EXISTS trg_aliases_domain_check_ins
+BEFORE INSERT ON aliases
+FOR EACH ROW
+BEGIN
+    -- alias_email must contain '@'
+    SELECT CASE
+        WHEN instr(NEW.alias_email, '@') = 0 THEN
+            RAISE(ABORT, 'aliases.alias_email must contain @')
+    END;
+
+    -- alias_domain_name must match alias_email
+    SELECT CASE
+        WHEN NEW.alias_domain_name <> substr(NEW.alias_email, instr(NEW.alias_email,'@')+1) THEN
+            RAISE(ABORT, 'aliases.alias_domain_name mismatch with alias_email domain')
+    END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_aliases_domain_check_upd
+BEFORE UPDATE ON aliases
+FOR EACH ROW
+BEGIN
+    -- alias_email must contain '@'
+    SELECT CASE
+        WHEN instr(NEW.alias_email, '@') = 0 THEN
+            RAISE(ABORT, 'aliases.alias_email must contain @')
+    END;
+
+    -- alias_domain_name must match alias_email
+    SELECT CASE
+        WHEN NEW.alias_domain_name <> substr(NEW.alias_email, instr(NEW.alias_email,'@')+1) THEN
+            RAISE(ABORT, 'aliases.alias_domain_name mismatch with alias_email domain')
+    END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_aliases_set_updated_at
+AFTER UPDATE ON aliases
+FOR EACH ROW
+WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE aliases
+    SET updated_at = strftime('%s','now')
+    WHERE alias_email = NEW.alias_email;
+END;
+
 
 CREATE TABLE IF NOT EXISTS apps (
-  app_id      TEXT PRIMARY KEY,
-  secret_hash TEXT NOT NULL,
-  enabled     INTEGER NOT NULL DEFAULT 1,
-  created_at  INTEGER NOT NULL
+    app_id      TEXT PRIMARY KEY,
+    secret_hash TEXT NOT NULL,
+    enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
+CREATE TRIGGER IF NOT EXISTS trg_apps_set_updated_at
+AFTER UPDATE ON apps
+FOR EACH ROW
+WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE apps
+    SET updated_at = strftime('%s','now')
+    WHERE app_id = NEW.app_id;
+END;
+
+
 CREATE TABLE IF NOT EXISTS app_from (
-  app_id    TEXT NOT NULL,
-  from_addr TEXT NOT NULL,
-  enabled   INTEGER NOT NULL DEFAULT 1,
-  PRIMARY KEY (app_id, from_addr),
-  FOREIGN KEY (app_id) REFERENCES apps(app_id) ON DELETE CASCADE
+    app_id      TEXT NOT NULL,
+    from_addr   TEXT NOT NULL,
+    enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (app_id, from_addr),
+    FOREIGN KEY (app_id) REFERENCES apps(app_id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_app_from_from_addr ON app_from(from_addr);
+
+CREATE TRIGGER IF NOT EXISTS trg_app_from_set_updated_at
+AFTER UPDATE ON app_from
+FOR EACH ROW
+WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE app_from
+    SET updated_at = strftime('%s','now')
+    WHERE app_id = NEW.app_id AND from_addr = NEW.from_addr;
+END;
 """
     )
     return con
@@ -68,37 +160,102 @@ argon2_hasher = PasswordHasher(
 )
 
 
+def cmd_domains_list(con):
+    rows = con.execute("SELECT domain_name, enabled FROM domains ORDER BY domain_name").fetchall()
+    for dn, en in rows:
+        print(f"{dn}\t{'enabled' if en else 'disabled'}")
+
+
+def cmd_domains_add(con, domain_name):
+    domain_name = domain_name.strip().lower()
+    now = int(time.time())
+    con.execute(
+        """
+INSERT INTO domains(domain_name, enabled, updated_at) VALUES(?,1,?)
+ON CONFLICT(domain_name) DO
+UPDATE SET enabled=1, updated_at=excluded.updated_at
+""",
+        (domain_name, now),
+    )
+    con.commit()
+
+
+def cmd_domains_del(con, domain_name):
+    domain_name = domain_name.strip().lower()
+    con.execute("DELETE FROM domains WHERE domain_name=?", (domain_name,))
+    con.commit()
+
+
+def cmd_domains_disable(con, domain_name):
+    domain_name = domain_name.strip().lower()
+    now = int(time.time())
+    con.execute(
+        "UPDATE domains SET enabled=0, updated_at=? WHERE domain_name=?",
+        (now, domain_name),
+    )
+    con.commit()
+
+
+def cmd_domains_enable(con, domain_name):
+    domain_name = domain_name.strip().lower()
+    now = int(time.time())
+    con.execute(
+        "UPDATE domains SET enabled=1, updated_at=? WHERE domain_name=?",
+        (now, domain_name),
+    )
+    con.commit()
+
+
 def cmd_aliases_list(con, username=None):
     if username:
         rows = con.execute(
             """
-SELECT alias_email, username, enabled, updated_at
-FROM aliases WHERE username=? ORDER BY alias_email
+SELECT alias_email, target_user, enabled
+FROM aliases WHERE target_user=? ORDER BY alias_email
 """,
             (username,),
         ).fetchall()
     else:
         rows = con.execute(
             """
-SELECT alias_email, username, enabled, updated_at
-FROM aliases ORDER BY username, alias_email
+SELECT alias_email, target_user, enabled
+FROM aliases ORDER BY target_user, alias_email
 """
         ).fetchall()
-    for a, u, en, ts in rows:
-        print(f"{a}\t{u}\t{'enabled' if en else 'disabled'}\t{ts}")
+    for a, u, en in rows:
+        print(f"{a}\t{u}\t{'enabled' if en else 'disabled'}")
 
 
-def cmd_aliases_add(con, alias_email, username):
+def cmd_aliases_add(con, alias_email, target_user):
     alias_email = norm_email(alias_email)
-    username = username.strip()
     now = int(time.time())
+
+    # determine domains from email addresses
+    try:
+        alias_domain = alias_email.split("@", 1)[1]
+    except Exception as err:
+        raise SystemExit("invalid email address format") from err
+
+    # alias domain must exist in local domains table
+    row = con.execute(
+        "SELECT domain_name FROM domains WHERE domain_name = ?", (alias_domain,)
+    ).fetchone()
+    if row is None:
+        raise SystemExit(f"domain not found: {alias_domain}")
+    alias_domain_name = row[0]
+
+    # insert including domain columns and finish early (skip the generic insert below)
     con.execute(
         """
-INSERT INTO aliases(alias_email, username, enabled, updated_at) VALUES(?,?,1,?)
-ON CONFLICT(alias_email) DO
-UPDATE SET username=excluded.username, enabled=1, updated_at=excluded.updated_at
+INSERT INTO aliases(alias_email, target_user, alias_domain_name, enabled, updated_at)
+VALUES(?,?,?,1,?)
+ON CONFLICT(alias_email) DO UPDATE SET
+    target_user=excluded.target_user,
+    alias_domain_name=excluded.alias_domain_name,
+    enabled=1,
+    updated_at=excluded.updated_at
 """,
-        (alias_email, username, now),
+        (alias_email, target_user, alias_domain_name, now),
     )
     con.commit()
 
@@ -111,24 +268,26 @@ def cmd_aliases_del(con, alias_email):
 
 def cmd_aliases_disable(con, alias_email):
     alias_email = norm_email(alias_email)
+    now = int(time.time())
     con.execute(
         "UPDATE aliases SET enabled=0, updated_at=? WHERE alias_email=?",
-        (int(time.time()), alias_email),
+        (now, alias_email),
     )
     con.commit()
 
 
 def cmd_aliases_enable(con, alias_email):
     alias_email = norm_email(alias_email)
+    now = int(time.time())
     con.execute(
         "UPDATE aliases SET enabled=1, updated_at=? WHERE alias_email=?",
-        (int(time.time()), alias_email),
+        (now, alias_email),
     )
     con.commit()
 
 
 def cmd_apps_list(con):
-    rows = con.execute("SELECT app_id, enabled, created_at FROM apps ORDER BY app_id").fetchall()
+    rows = con.execute("SELECT app_id, enabled, updated_at FROM apps ORDER BY app_id").fetchall()
     for app_id, en, ts in rows:
         print(f"{app_id}\t{'enabled' if en else 'disabled'}\t{ts}")
         from_rows = con.execute(
@@ -143,14 +302,14 @@ def cmd_apps_list(con):
 
 
 def cmd_apps_add(con, app_id, password):
-    app_id = norm_id(app_id)
+    app_id = "app:" + norm_id(app_id)
     secret_hash = f"{{ARGON2ID}}{argon2_hasher.hash(password)}"
     now = int(time.time())
     con.execute(
         """
-        INSERT INTO apps(app_id, secret_hash, enabled, created_at) VALUES(?,?,1,?)
+        INSERT INTO apps(app_id, secret_hash, enabled, updated_at) VALUES(?,?,1,?)
         ON CONFLICT(app_id) DO
-        UPDATE SET secret_hash=excluded.secret_hash, enabled=1, created_at=excluded.created_at
+        UPDATE SET secret_hash=excluded.secret_hash, enabled=1, updated_at=excluded.updated_at
     """,
         (app_id, secret_hash, now),
     )
@@ -158,24 +317,25 @@ def cmd_apps_add(con, app_id, password):
 
 
 def cmd_apps_del(con, app_id):
-    app_id = norm_id(app_id)
+    app_id = "app:" + norm_id(app_id)
     con.execute("DELETE FROM apps WHERE app_id=?", (app_id,))
     con.commit()
 
 
 def cmd_apps_allow(con, app_id, from_addr):
-    app_id = norm_id(app_id)
+    app_id = "app:" + norm_id(app_id)
     from_addr = norm_email(from_addr)
+    now = int(time.time())
     con.execute(
-        "INSERT INTO app_from(app_id, from_addr, enabled) VALUES(?,?,1) "
-        "ON CONFLICT(app_id, from_addr) DO UPDATE SET enabled=1",
-        (app_id, from_addr),
+        "INSERT INTO app_from(app_id, from_addr, enabled, updated_at) VALUES(?,?,1,?) "
+        "ON CONFLICT(app_id, from_addr) DO UPDATE SET enabled=1, updated_at=excluded.updated_at",
+        (app_id, from_addr, now),
     )
     con.commit()
 
 
 def cmd_apps_disallow(con, app_id, from_addr):
-    app_id = norm_id(app_id)
+    app_id = "app:" + norm_id(app_id)
     from_addr = norm_email(from_addr)
     con.execute("DELETE FROM app_from WHERE app_id=? AND from_addr=?", (app_id, from_addr))
     con.commit()
@@ -192,6 +352,23 @@ def main():
     sub = ap.add_subparsers(dest="group", required=True)
 
     sub.add_parser("init")
+
+    domains = sub.add_parser("domains")
+    domains_sub = domains.add_subparsers(dest="cmd", required=True)
+
+    domains_sub.add_parser("list")
+
+    p_domains_add = domains_sub.add_parser("add")
+    p_domains_add.add_argument("domain_name")
+
+    p_domains_del = domains_sub.add_parser("del")
+    p_domains_del.add_argument("domain_name")
+
+    p_domains_enable = domains_sub.add_parser("enable")
+    p_domains_enable.add_argument("domain_name")
+
+    p_domains_disable = domains_sub.add_parser("disable")
+    p_domains_disable.add_argument("domain_name")
 
     aliases = sub.add_parser("aliases")
     aliases_sub = aliases.add_subparsers(dest="cmd", required=True)
@@ -239,7 +416,18 @@ def main():
 
     con = connect(args.db)
     try:
-        if args.group == "aliases":
+        if args.group == "domains":
+            if args.cmd == "list":
+                cmd_domains_list(con)
+            elif args.cmd == "add":
+                cmd_domains_add(con, args.domain_name)
+            elif args.cmd == "del":
+                cmd_domains_del(con, args.domain_name)
+            elif args.cmd == "disable":
+                cmd_domains_disable(con, args.domain_name)
+            elif args.cmd == "enable":
+                cmd_domains_enable(con, args.domain_name)
+        elif args.group == "aliases":
             if args.cmd == "list":
                 cmd_aliases_list(con, args.user)
             elif args.cmd == "add":

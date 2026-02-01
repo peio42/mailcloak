@@ -31,7 +31,7 @@ func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 	return l, nil
 }
 
-func ServeSocketmap(ctx context.Context, cfg *Config, db *MailcloakDB, l net.Listener) error {
+func ServeSocketmap(ctx context.Context, db *MailcloakDB, l net.Listener) error {
 	defer l.Close()
 
 	for {
@@ -45,7 +45,7 @@ func ServeSocketmap(ctx context.Context, cfg *Config, db *MailcloakDB, l net.Lis
 				return err
 			}
 		}
-		go handleSocketmapConn(conn, cfg, db)
+		go handleSocketmapConn(conn, db)
 	}
 }
 
@@ -54,11 +54,11 @@ func RunSocketmap(ctx context.Context, cfg *Config, db *MailcloakDB) error {
 	if err != nil {
 		return err
 	}
-	return ServeSocketmap(ctx, cfg, db, l)
+	return ServeSocketmap(ctx, db, l)
 }
 
 // Postfix socketmap framing: "<len>:<payload>,"
-func handleSocketmapConn(conn net.Conn, cfg *Config, db *MailcloakDB) {
+func handleSocketmapConn(conn net.Conn, db *MailcloakDB) {
 	defer conn.Close()
 	r := bufio.NewReader(conn)
 
@@ -96,9 +96,19 @@ func handleSocketmapConn(conn net.Conn, cfg *Config, db *MailcloakDB) {
 			continue
 		}
 
-		// Only handle our domain
-		domain := strings.ToLower(cfg.Policy.Domain)
-		if !strings.HasSuffix(key, "@"+domain) {
+		domain, ok := domainFromEmail(key)
+		if !ok {
+			log.Printf("socketmap decision: map=alias key=%s action=NOTFOUND (invalid address)", key)
+			_ = writeSocketmapFrame(conn, "NOTFOUND")
+			continue
+		}
+		local, err := db.DomainEnabled(domain)
+		if err != nil {
+			log.Printf("socketmap domain lookup error: key=%s err=%v", key, err)
+			_ = writeSocketmapFrame(conn, "TEMP")
+			continue
+		}
+		if !local {
 			log.Printf("socketmap decision: map=alias key=%s action=NOTFOUND (other domain)", key)
 			_ = writeSocketmapFrame(conn, "NOTFOUND")
 			continue

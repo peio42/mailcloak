@@ -6,20 +6,20 @@ import (
 )
 
 type FakeIdentityResolver struct {
-	EmailByUser        map[string]string
-	EmailExistsSet     map[string]bool
-	EmailByUsernameErr error
-	EmailExistsErr     error
+	EmailByUser         map[string]string
+	EmailExistsSet      map[string]bool
+	ResolveUserEmailErr error
+	EmailExistsErr      error
 }
 
-func (f *FakeIdentityResolver) EmailByUsername(ctx context.Context, username string) (string, bool, error) {
-	if f.EmailByUsernameErr != nil {
-		return "", false, f.EmailByUsernameErr
+func (f *FakeIdentityResolver) ResolveUserEmail(ctx context.Context, user string) (string, bool, error) {
+	if f.ResolveUserEmailErr != nil {
+		return "", false, f.ResolveUserEmailErr
 	}
 	if f.EmailByUser == nil {
 		return "", false, nil
 	}
-	email, ok := f.EmailByUser[strings.ToLower(username)]
+	email, ok := f.EmailByUser[strings.ToLower(user)]
 	if !ok {
 		return "", false, nil
 	}

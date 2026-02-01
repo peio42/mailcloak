@@ -9,7 +9,6 @@ sqlite:
   path: "/var/lib/mailcloak/state.db"
 
 policy:
-  domain: "<EMail domain-name>"
   # cache for keycloak lookups (username->email, email->exists)
   cache_ttl_seconds: 120
   # if keycloak is down:
