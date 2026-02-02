@@ -80,6 +80,7 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityR
 
 	// Decide based on protocol_state
 	state := req["protocol_state"] // e.g. RCPT, MAIL
+	saslMethod := strings.ToLower(req["sasl_method"])
 	saslUser := req["sasl_username"]
 	sender := strings.ToLower(req["sender"])
 	rcpt := strings.ToLower(req["recipient"])
@@ -88,19 +89,10 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityR
 
 	switch state {
 	case "RCPT":
-		action = policyRCPT(cfg, db, idp, rcpt)
+		action = policy(cfg, db, idp, sender, rcpt, saslMethod, saslUser)
 
-		// With "smtpd_delay_reject = yes" in Postfix, MAIL stage is bypassed
-		// So we move all checks to RCPT stage
-		if action == "DUNNO" {
-			action = policyMAIL(cfg, db, idp, saslUser, sender)
-		}
-
-	// case "MAIL":
-	//   // On MAIL stage we can validate sender if authenticated (submission)
-	//	   if saslUser != "" && sender != "" {
-	//	    action = policyMAIL(cfg, db, idp, saslUser, sender)
-	//    }
+	// With "smtpd_delay_reject = yes" in Postfix, MAIL stage is bypassed
+	// So we move all checks to RCPT stage
 
 	default:
 		action = "DUNNO"
@@ -111,100 +103,102 @@ func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityR
 	fmt.Fprintf(conn, "action=%s\n\n", action)
 }
 
-func policyRCPT(cfg *Config, db *MailcloakDB, idp IdentityResolver, rcpt string) string {
+func policy(cfg *Config, db *MailcloakDB, idp IdentityResolver, sender, rcpt, saslMethod, saslUser string) string {
 	if rcpt == "" {
 		return "DUNNO"
 	}
-	// Only enforce for our local domains
-	domain, ok := domainFromEmail(rcpt)
-	if !ok {
-		return "DUNNO"
-	}
-	local, err := db.DomainEnabled(domain)
+
+	// Check recipient against local domains
+	rcptLocal, err := db.DomainFromEmailIsLocal(rcpt)
 	if err != nil {
 		log.Printf("sqlite domain lookup error: %v", err)
 		return "451 4.3.0 Temporary internal error"
 	}
-	if !local {
+	if rcptLocal {
+		// Check recipient exists
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		exists, err := idp.EmailExists(ctx, rcpt)
+		if err != nil {
+			log.Printf("keycloak email exists lookup error for %s: %v", rcpt, err)
+			if cfg.Policy.KeycloakFailureMode == "dunno" {
+				return "DUNNO"
+			}
+			return "451 4.3.0 Temporary authentication/lookup failure"
+		}
+		if !exists {
+			_, exists, err := db.AliasOwner(rcpt)
+			if err != nil {
+				log.Printf("sqlite alias sender lookup error: %v", err)
+				return "451 4.3.0 Temporary internal error"
+			}
+			if !exists {
+				return "550 5.1.1 No such user"
+			}
+		}
+	}
+
+	if saslMethod == "" {
+		// No authentication:
+		// - Block recipient to non-local domains
+		// - Block sending from local domains
+
+		if !rcptLocal {
+			return "550 5.7.1 Recipient domain not local"
+		}
+
+		senderLocal, err := db.DomainFromEmailIsLocal(sender)
+		if err != nil {
+			log.Printf("sqlite domain lookup error: %v", err)
+			return "451 4.3.0 Temporary internal error"
+		}
+
+		if senderLocal {
+			return "553 5.7.1 Sending from local domains requires authentication"
+		}
+
 		return "DUNNO"
 	}
 
-	// 1) exists in keycloak primary email?
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	exists, err := idp.EmailExists(ctx, rcpt)
-	if err != nil {
-		log.Printf("keycloak email exists lookup error for %s: %v", rcpt, err)
-		if cfg.Policy.KeycloakFailureMode == "dunno" {
+	if saslMethod == "xoauth2" || saslMethod == "oauthbearer" {
+		// User authenticated via OIDC/OAuth2
+		// - Allow all recipients
+		// - Allow sending from user primary email or aliases only
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		email, ok, err := idp.ResolveUserEmail(ctx, saslUser)
+		if err != nil {
+			log.Printf("keycloak email-by-user lookup error for %s: %v", saslUser, err)
+			if cfg.Policy.KeycloakFailureMode == "dunno" {
+				return "DUNNO"
+			}
+			return "451 4.3.0 Temporary authentication/lookup failure"
+		}
+
+		// 1) sender == primary email
+		if ok && strings.EqualFold(sender, email) {
 			return "DUNNO"
 		}
-		return "451 4.3.0 Temporary authentication/lookup failure"
-	}
-	if exists {
-		return "DUNNO"
-	}
 
-	// 2) exists as sqlite alias?
-	_, aliasOk, err := db.AliasOwner(rcpt)
-	if err != nil {
-		log.Printf("sqlite rcpt lookup error: %v", err)
-		return "451 4.3.0 Temporary internal error"
-	}
-	if aliasOk {
-		return "DUNNO"
-	}
-
-	return "550 5.1.1 No such user"
-}
-
-func policyMAIL(cfg *Config, db *MailcloakDB, idp IdentityResolver, saslUser, sender string) string {
-	// Allow empty sender (bounce)
-	if sender == "" || sender == "<>" {
-		return "DUNNO"
-	}
-	// Only enforce our domain senders (optional)
-	domain, ok := domainFromEmail(sender)
-	if !ok {
-		return "DUNNO"
-	}
-	local, err := db.DomainEnabled(domain)
-	if err != nil {
-		log.Printf("sqlite domain lookup error: %v", err)
-		return "451 4.3.0 Temporary internal error"
-	}
-	if !local {
-		return "DUNNO"
-	}
-
-	// primary email from keycloak
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	email, ok, err := idp.ResolveUserEmail(ctx, saslUser)
-	if err != nil {
-		log.Printf("keycloak email-by-user lookup error for %s: %v", saslUser, err)
-		if cfg.Policy.KeycloakFailureMode == "dunno" {
+		// 2) sender is sqlite alias belonging to this user
+		belongs, err := db.AliasBelongsTo(sender, saslUser)
+		if err != nil {
+			log.Printf("sqlite alias sender lookup error: %v", err)
+			return "451 4.3.0 Temporary internal error"
+		}
+		if belongs {
 			return "DUNNO"
 		}
-		return "451 4.3.0 Temporary authentication/lookup failure"
+
+		return "553 5.7.1 Sender not owned by authenticated user"
 	}
 
-	// 1) sender == primary email
-	if ok && strings.EqualFold(sender, email) {
-		return "DUNNO"
-	}
+	if saslMethod == "plain" || saslMethod == "login" {
+		// App authenticatied via username/password
+		// - Allow all recipients
+		// - Allow sending from email associated with app only
 
-	// 2) sender is sqlite alias belonging to this user
-	belongs, err := db.AliasBelongsTo(sender, saslUser)
-	if err != nil {
-		log.Printf("sqlite sender lookup error: %v", err)
-		return "451 4.3.0 Temporary internal error"
-	}
-	if belongs {
-		return "DUNNO"
-	}
-
-	// 3) sender is allowed for app (saslUser = app_id)
-	if saslUser != "" {
 		allowed, err := db.AppFromAllowed(saslUser, sender)
 		if err != nil {
 			log.Printf("sqlite app sender lookup error: %v", err)
@@ -213,7 +207,9 @@ func policyMAIL(cfg *Config, db *MailcloakDB, idp IdentityResolver, saslUser, se
 		if allowed {
 			return "DUNNO"
 		}
+
+		return "553 5.7.1 Sender not owned by authenticated user"
 	}
 
-	return "553 5.7.1 Sender not owned by authenticated user"
+	return "553 5.7.1 Unsupported authentication method"
 }

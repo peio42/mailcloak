@@ -302,7 +302,7 @@ def cmd_apps_list(con):
 
 
 def cmd_apps_add(con, app_id, password):
-    app_id = "app:" + norm_id(app_id)
+    app_id = norm_id(app_id)
     secret_hash = f"{{ARGON2ID}}{argon2_hasher.hash(password)}"
     now = int(time.time())
     con.execute(
@@ -317,13 +317,13 @@ def cmd_apps_add(con, app_id, password):
 
 
 def cmd_apps_del(con, app_id):
-    app_id = "app:" + norm_id(app_id)
+    app_id = norm_id(app_id)
     con.execute("DELETE FROM apps WHERE app_id=?", (app_id,))
     con.commit()
 
 
 def cmd_apps_allow(con, app_id, from_addr):
-    app_id = "app:" + norm_id(app_id)
+    app_id = norm_id(app_id)
     from_addr = norm_email(from_addr)
     now = int(time.time())
     con.execute(
@@ -335,7 +335,7 @@ def cmd_apps_allow(con, app_id, from_addr):
 
 
 def cmd_apps_disallow(con, app_id, from_addr):
-    app_id = "app:" + norm_id(app_id)
+    app_id = norm_id(app_id)
     from_addr = norm_email(from_addr)
     con.execute("DELETE FROM app_from WHERE app_id=? AND from_addr=?", (app_id, from_addr))
     con.commit()
