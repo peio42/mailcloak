@@ -38,6 +38,9 @@ jobs:
       - name: Go test (race)
         run: go test -race ./...
 
+      - name: Go test (integration)
+        run: go test -tags=integration ./...
+
       # ---- Python checks ----
       - name: Setup Python
         uses: actions/setup-python@v5
