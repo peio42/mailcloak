@@ -30,10 +30,11 @@ func baseConfig(dbPath, policySock, socketmapSock, kcURL, failureMode string) *m
 	return cfg
 }
 
-func TestPolicy_RCPT(t *testing.T) {
+func TestPolicy(t *testing.T) {
 	tests := []struct {
 		name             string
 		kcMode           fakeKCMode
+		saslMethod       string
 		saslUser         string
 		sender           string
 		recipient        string
@@ -41,7 +42,15 @@ func TestPolicy_RCPT(t *testing.T) {
 		wantActionSubstr string
 	}{
 		{
-			name:             "RCPT allowed via alias when keycloak returns empty",
+			name:             "RCPT allowed for primary email",
+			kcMode:           kcUserAlice,
+			sender:           "sender@example.net",
+			recipient:        "alice@d1.test",
+			failureMode:      "tempfail",
+			wantActionSubstr: "action=DUNNO",
+		},
+		{
+			name:             "RCPT allowed for alias email",
 			kcMode:           kcUserAbsent,
 			sender:           "sender@example.net",
 			recipient:        "alias1@d1.test",
@@ -49,7 +58,7 @@ func TestPolicy_RCPT(t *testing.T) {
 			wantActionSubstr: "action=DUNNO",
 		},
 		{
-			name:             "RCPT rejected when keycloak empty and alias missing",
+			name:             "RCPT rejected when alias missing",
 			kcMode:           kcUserAbsent,
 			sender:           "sender@example.net",
 			recipient:        "missing@d1.test",
@@ -57,44 +66,75 @@ func TestPolicy_RCPT(t *testing.T) {
 			wantActionSubstr: "action=550 5.1.1 No such user",
 		},
 		{
-			name:             "Local sender allowed when keycloak returns primary email",
-			kcMode:           kcUserPresent,
+			name:             "RCPT rejected when sender from local without auth",
+			kcMode:           kcUserAbsent,
+			sender:           "alice@d1.test",
+			recipient:        "alias1@d1.test",
+			failureMode:      "tempfail",
+			wantActionSubstr: "action=553 5.7.1 Sending from local domains requires authentication",
+		},
+		{
+			name:             "RCPT rejected for mail relay",
+			kcMode:           kcUserAbsent,
+			sender:           "sender@example.net",
+			recipient:        "recipient@example.com",
+			failureMode:      "tempfail",
+			wantActionSubstr: "action=550 5.7.1 Recipient domain not local",
+		},
+		{
+			name:             "Local sender allowed for user primary email",
+			kcMode:           kcUserAlice,
+			saslMethod:       "xoauth2",
 			saslUser:         "alice",
 			sender:           "alice@d1.test",
-			recipient:        "recipient@example.net",
+			recipient:        "recipient@example.com",
+			failureMode:      "tempfail",
+			wantActionSubstr: "action=DUNNO",
+		},
+		{
+			name:             "Local sender allowed for user alias email",
+			kcMode:           kcUserAlice,
+			saslMethod:       "xoauth2",
+			saslUser:         "alice",
+			sender:           "alias1@d1.test",
+			recipient:        "recipient@example.com",
 			failureMode:      "tempfail",
 			wantActionSubstr: "action=DUNNO",
 		},
 		{
 			name:             "Local sender rejected when not matching keycloak primary email",
-			kcMode:           kcUserPresent,
+			kcMode:           kcUserAlice,
+			saslMethod:       "xoauth2",
 			saslUser:         "alice",
 			sender:           "bob@d2.test",
-			recipient:        "recipient@example.net",
+			recipient:        "recipient@example.com",
 			failureMode:      "tempfail",
 			wantActionSubstr: "action=553 5.7.1 Sender not owned by authenticated user",
 		},
 		{
 			name:             "app mail allowed when sender allowed for app",
 			kcMode:           kcUserAbsent,
+			saslMethod:       "plain",
 			saslUser:         "app1",
 			sender:           "app1@d1.test",
-			recipient:        "recipient@example.net",
+			recipient:        "recipient@example.com",
 			failureMode:      "tempfail",
 			wantActionSubstr: "action=DUNNO",
 		},
 		{
 			name:             "app mail rejected when sender not allowed for app",
 			kcMode:           kcUserAbsent,
+			saslMethod:       "plain",
 			saslUser:         "app1",
 			sender:           "app2@d1.test",
-			recipient:        "recipient@example.net",
+			recipient:        "recipient@example.com",
 			failureMode:      "tempfail",
 			wantActionSubstr: "action=553 5.7.1 Sender not owned by authenticated user",
 		},
 		{
 			name:             "Keycloak down + failure_mode=tempfail => 451",
 			kcMode:           kcDown,
+			saslMethod:       "xoauth2",
 			sender:           "alice@d1.test",
 			recipient:        "alias1@d1.test",
 			failureMode:      "tempfail",
@@ -103,6 +143,8 @@ func TestPolicy_RCPT(t *testing.T) {
 		{
 			name:             "Keycloak down + failure_mode=dunno => DUNNO",
 			kcMode:           kcDown,
+			saslMethod:       "xoauth2",
+			saslUser:         "alice",
 			sender:           "alice@d1.test",
 			recipient:        "alias1@d1.test",
 			failureMode:      "dunno",
@@ -140,6 +182,7 @@ func TestPolicy_RCPT(t *testing.T) {
 				"queue_id":            "TEST123",
 				"sender":              tc.sender,
 				"recipient":           tc.recipient,
+				"sasl_method":         tc.saslMethod,
 				"sasl_username":       tc.saslUser,
 				"client_address":      "127.0.0.1",
 				"client_name":         "localhost",

@@ -38,12 +38,9 @@ PRAGMA synchronous=NORMAL;
 
 func (a *MailcloakDB) Close() error { return a.DB.Close() }
 
-// Returns true if domain exists and is enabled
 func (a *MailcloakDB) DomainEnabled(domain string) (bool, error) {
-	if domain == "" {
-		return false, nil
-	}
 	var enabled int
+
 	err := a.DB.QueryRow(`SELECT enabled FROM domains WHERE domain_name=?`, strings.ToLower(domain)).Scan(&enabled)
 	if err == sql.ErrNoRows {
 		return false, nil
@@ -52,6 +49,19 @@ func (a *MailcloakDB) DomainEnabled(domain string) (bool, error) {
 		return false, err
 	}
 	return enabled == 1, nil
+}
+
+// Returns true if domain exists and is enabled
+func (a *MailcloakDB) DomainFromEmailIsLocal(email string) (bool, error) {
+	domain, ok := domainFromEmail(email)
+	if !ok {
+		return false, nil
+	}
+	if domain == "" {
+		return false, nil
+	}
+
+	return a.DomainEnabled(domain)
 }
 
 // Returns email owning alias, ok

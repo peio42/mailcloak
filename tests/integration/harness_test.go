@@ -210,9 +210,9 @@ func policyQuery(t *testing.T, sockPath string, kv map[string]string) string {
 type fakeKCMode int
 
 const (
-	kcUserAbsent  fakeKCMode = iota // token OK, /users returns []
-	kcUserPresent                   // token OK, /users returns alice with email alice@...
-	kcDown                          // endpoints return 500
+	kcUserAbsent fakeKCMode = iota // token OK, /users returns []
+	kcUserAlice                    // token OK, /users returns alice with email alice@...
+	kcDown                         // endpoints return 500
 )
 
 // newFakeKeycloak exposes (realm: "test"):
@@ -241,7 +241,7 @@ func newFakeKeycloak(t *testing.T, mode fakeKCMode) *httptest.Server {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		if mode == kcUserPresent {
+		if mode == kcUserAlice {
 			_, _ = w.Write([]byte(`[{"id":"1","username":"alice","email":"alice@d1.test","enabled":true}]`))
 			return
 		}
