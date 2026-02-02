@@ -30,55 +30,13 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	log.Printf("opening policy listener at %s", cfg.Sockets.PolicySocket)
-	policyListener, err := mailcloak.OpenPolicyListener(cfg)
-	if err != nil {
-		log.Fatalf("policy listener: %v", err)
-	}
-
-	log.Printf("opening socketmap listener at %s", cfg.Sockets.SocketmapSocket)
-	socketmapListener, err := mailcloak.OpenSocketmapListener(cfg)
-	if err != nil {
-		_ = policyListener.Close()
-		log.Fatalf("socketmap listener: %v", err)
-	}
-
-	log.Printf("dropping privileges to %s", cfg.Daemon.User)
-	if err := mailcloak.DropPrivileges(cfg); err != nil {
-		_ = policyListener.Close()
-		_ = socketmapListener.Close()
-		log.Fatalf("privileges: %v", err)
-	}
-
-	log.Printf("opening sqlite db at %s", cfg.SQLite.Path)
-	db, err := mailcloak.OpenMailcloakDB(cfg.SQLite.Path)
-	if err != nil {
-		log.Fatalf("sqlite: %v", err)
-	}
-	defer db.Close()
-
-	kc := mailcloak.NewKeycloak(cfg)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start socketmap server
-	go func() {
-		log.Printf("socketmap server started")
-		if err := mailcloak.ServeSocketmap(ctx, db, socketmapListener); err != nil {
-			log.Fatalf("socketmap: %v", err)
-		}
-	}()
-
-	// Start policy server
-	go func() {
-		log.Printf("policy server started")
-		if err := mailcloak.ServePolicy(ctx, cfg, db, kc, policyListener); err != nil {
-			log.Fatalf("policy: %v", err)
-		}
-	}()
-
-	log.Printf("mailcloak started")
+	svc, err := mailcloak.Start(ctx, cfg)
+	if err != nil {
+		log.Fatalf("start: %v", err)
+	}
 
 	// Handle signals
 	ch := make(chan os.Signal, 2)
@@ -86,5 +44,6 @@ func main() {
 	<-ch
 	log.Printf("shutdown")
 	cancel()
-	time.Sleep(300 * time.Millisecond)
+
+	<-svc.Done()
 }
