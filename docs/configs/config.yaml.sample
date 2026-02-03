@@ -3,14 +3,14 @@ keycloak:
   realm: "<Keycloak Realm>"
   client_id: "<Client ID>"
   client_secret: "<Client Secret>"
+  # cache for keycloak lookups (username->email, email->exists)
+  cache_ttl_seconds: 120
   # admin API is derived: {base_url}/admin/realms/{realm}
 
 sqlite:
   path: "/var/lib/mailcloak/state.db"
 
 policy:
-  # cache for keycloak lookups (username->email, email->exists)
-  cache_ttl_seconds: 120
   # if keycloak is down:
   #  - "tempfail": return 451 (recommended)
   #  - "dunno": fail-open

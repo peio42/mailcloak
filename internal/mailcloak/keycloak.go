@@ -19,7 +19,7 @@ type Keycloak struct {
 }
 
 func NewKeycloak(cfg *Config) *Keycloak {
-	ttl := time.Duration(cfg.Policy.CacheTTLSeconds) * time.Second
+	ttl := time.Duration(cfg.Keycloak.CacheTTLSeconds) * time.Second
 	return &Keycloak{
 		cfg:   cfg,
 		hc:    &http.Client{Timeout: 5 * time.Second},

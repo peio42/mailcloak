@@ -17,6 +17,7 @@ func newTestKeycloak(t *testing.T, handler http.HandlerFunc) (*Keycloak, *httpte
 	cfg.Keycloak.Realm = "realm"
 	cfg.Keycloak.ClientID = "client"
 	cfg.Keycloak.ClientSecret = "secret"
+	cfg.Keycloak.CacheTTLSeconds = 1
 	return NewKeycloak(cfg), srv
 }
 

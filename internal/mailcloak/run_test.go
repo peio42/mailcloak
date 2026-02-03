@@ -32,16 +32,23 @@ func testConfig(t *testing.T, dir string) *Config {
 		}{
 			User: "",
 		},
+		Keycloak: struct {
+			BaseURL         string `yaml:"base_url"`
+			Realm           string `yaml:"realm"`
+			ClientID        string `yaml:"client_id"`
+			ClientSecret    string `yaml:"client_secret"`
+			CacheTTLSeconds int    `yaml:"cache_ttl_seconds"`
+		}{
+			CacheTTLSeconds: 1,
+		},
 		SQLite: struct {
 			Path string `yaml:"path"`
 		}{
 			Path: filepath.Join(dir, "state.db"),
 		},
 		Policy: struct {
-			CacheTTLSeconds     int    `yaml:"cache_ttl_seconds"`
 			KeycloakFailureMode string `yaml:"keycloak_failure_mode"`
 		}{
-			CacheTTLSeconds:     1,
 			KeycloakFailureMode: "tempfail",
 		},
 		Sockets: struct {
