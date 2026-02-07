@@ -1,15 +1,17 @@
-keycloak:
-  base_url: "http://keycloak:8080"
-  realm: "test"
-  client_id: "mailcloak-admin"
-  client_secret: "mailcloak-admin-secret"
-  cache_ttl_seconds: 1
+idp:
+  provider: "keycloak"
+  keycloak:
+    base_url: "http://keycloak:8080"
+    realm: "test"
+    client_id: "mailcloak-admin"
+    client_secret: "mailcloak-admin-secret"
+    cache_ttl_seconds: 1
 
 sqlite:
   path: "/var/lib/mailcloak/state.db"
 
 policy:
-  keycloak_failure_mode: "tempfail"
+  idp_failure_mode: "tempfail"
 
 sockets:
   policy_socket: "/var/spool/postfix/private/mailcloak-policy"

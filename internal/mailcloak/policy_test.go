@@ -9,7 +9,7 @@ import (
 
 func testPolicyConfig(failureMode string) *Config {
 	cfg := &Config{}
-	cfg.Policy.KeycloakFailureMode = failureMode
+	cfg.Policy.IDPFailureMode = failureMode
 	return cfg
 }
 

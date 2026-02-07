@@ -32,14 +32,15 @@ func testConfig(t *testing.T, dir string) *Config {
 		}{
 			User: "",
 		},
-		Keycloak: struct {
-			BaseURL         string `yaml:"base_url"`
-			Realm           string `yaml:"realm"`
-			ClientID        string `yaml:"client_id"`
-			ClientSecret    string `yaml:"client_secret"`
-			CacheTTLSeconds int    `yaml:"cache_ttl_seconds"`
-		}{
-			CacheTTLSeconds: 1,
+		IDP: IDPConfig{
+			Provider: "keycloak",
+			Keycloak: KeycloakConfig{
+				BaseURL:         "http://example.com",
+				Realm:           "realm",
+				ClientID:        "client",
+				ClientSecret:    "secret",
+				CacheTTLSeconds: 1,
+			},
 		},
 		SQLite: struct {
 			Path string `yaml:"path"`
@@ -47,9 +48,10 @@ func testConfig(t *testing.T, dir string) *Config {
 			Path: filepath.Join(dir, "state.db"),
 		},
 		Policy: struct {
+			IDPFailureMode      string `yaml:"idp_failure_mode"`
 			KeycloakFailureMode string `yaml:"keycloak_failure_mode"`
 		}{
-			KeycloakFailureMode: "tempfail",
+			IDPFailureMode: "tempfail",
 		},
 		Sockets: struct {
 			PolicySocket     string `yaml:"policy_socket"`

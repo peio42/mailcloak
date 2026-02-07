@@ -1,20 +1,29 @@
-keycloak:
-  base_url: "<Keycloak URL>"
-  realm: "<Keycloak Realm>"
-  client_id: "<Client ID>"
-  client_secret: "<Client Secret>"
-  # cache for keycloak lookups (username->email, email->exists)
-  cache_ttl_seconds: 120
-  # admin API is derived: {base_url}/admin/realms/{realm}
+idp:
+  provider: "keycloak" # keycloak | authentik
+
+  keycloak:
+    base_url: "<Keycloak URL>"
+    realm: "<Keycloak Realm>"
+    client_id: "<Client ID>"
+    client_secret: "<Client Secret>"
+    # cache for keycloak lookups (username->email, email->exists)
+    cache_ttl_seconds: 120
+    # admin API is derived: {base_url}/admin/realms/{realm}
+
+  authentik:
+    base_url: "<Authentik URL>"
+    api_token: "<API Token>"
+    # cache for authentik lookups (username->email, email->exists)
+    cache_ttl_seconds: 120
 
 sqlite:
   path: "/var/lib/mailcloak/state.db"
 
 policy:
-  # if keycloak is down:
+  # if idp is down:
   #  - "tempfail": return 451 (recommended)
   #  - "dunno": fail-open
-  keycloak_failure_mode: "tempfail"
+  idp_failure_mode: "tempfail"
 
 sockets:
   # These paths must be inside postfix chroot (/var/spool/postfix)

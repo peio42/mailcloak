@@ -1,8 +1,8 @@
 # mailcloak
 
-Mailcloak is a Postfix policy service designed to secure and control mail flows by integrating Postfix, Dovecot, and Keycloak.
+Mailcloak is a Postfix policy service designed to secure and control mail flows by integrating Postfix, Dovecot, and an identity provider (IdP) such as Keycloak.
 
-It enables fine-grained authorization of mail senders and recipients based on identities managed in Keycloak, while remaining compatible with standard SMTP workflows. Mailcloak is particularly suited for small modern mail infrastructures relying on OIDC authentication.
+It enables fine-grained authorization of mail senders and recipients based on identities managed in your IdP, while remaining compatible with standard SMTP workflows. Mailcloak is particularly suited for small modern mail infrastructures relying on OIDC authentication.
 
 ## Why Mailcloak?
 
@@ -109,7 +109,9 @@ Sample configuration can be found in `docs/configs/` folder.
 Copy the sample config in `/etc/mailcloak/config.yaml` and edit it according to your environment.
 
 Key settings:
-- `keycloak.*` must point to your Keycloak realm and a client with permission to query users.
+- `idp.provider` selects the identity provider (`keycloak` or `authentik`).
+- `idp.keycloak.*` must point to your Keycloak realm and a client with permission to query users.
+- `idp.authentik.*` must point to your Authentik base URL and an API token.
 - `policy.domain` is the email domain enforced by the policy.
 - `sqlite.path` is the aliases database path.
 - `sockets.*` must be under the Postfix chroot (usually `/var/spool/postfix`).
@@ -171,5 +173,5 @@ rc-service mailcloak start
 ```
 
 ## Notes
-- If Keycloak is unavailable, the policy returns `451` by default (configurable via `policy.keycloak_failure_mode`).
-- The policy caches lookups for `keycloak.cache_ttl_seconds`.
+- If the IdP is unavailable, the policy returns `451` by default (configurable via `policy.idp_failure_mode`).
+- The policy caches lookups for `idp.<provider>.cache_ttl_seconds`.
