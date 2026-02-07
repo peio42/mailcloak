@@ -1,0 +1,77 @@
+# version: "3.8"
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      JAVA_OPTS_APPEND: "-Xms256m -Xmx768m"
+    volumes:
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+    ports:
+      - "8080:8080"
+    mem_limit: 1g
+
+  mailcloak:
+    build:
+      context: ../..
+      dockerfile: tests/e2e/mailcloak/Dockerfile
+    environment:
+      MAILCLOAK_CONFIG: /config/mailcloak.yaml
+    volumes:
+      - mailcloak-state:/var/lib/mailcloak
+      - postfix-private:/var/spool/postfix/private
+      - ./scripts:/scripts:ro
+    depends_on:
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "test", "-S", "/var/spool/postfix/private/mailcloak-policy"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+
+  dovecot:
+    build:
+      context: ./dovecot
+      dockerfile: Dockerfile
+    volumes:
+      - mailcloak-state:/var/lib/mailcloak
+      - postfix-private:/var/spool/postfix/private
+    depends_on:
+      mailcloak:
+        condition: service_healthy
+
+  postfix:
+    build:
+      context: ./postfix
+      dockerfile: Dockerfile
+    volumes:
+      - mailcloak-state:/var/spool/postfix/mailcloak
+      - postfix-private:/var/spool/postfix/private
+      - ./scripts:/scripts:ro
+    ports:
+      - "1025:25"
+    depends_on:
+      mailcloak:
+        condition: service_healthy
+      dovecot:
+        condition: service_started
+
+  postfix-external:
+    build:
+      context: ./postfix
+      dockerfile: Dockerfile
+    volumes:
+      - ./scripts:/scripts:ro
+    environment:
+      POSTFIX_EXTERNAL: "1"
+    depends_on:
+      mailcloak:
+        condition: service_healthy
+
+volumes:
+  mailcloak-state:
+  postfix-private:

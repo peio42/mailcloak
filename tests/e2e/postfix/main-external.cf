@@ -1,0 +1,28 @@
+compatibility_level = 3.6
+smtpd_banner = $myhostname ESMTP
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+
+myhostname = postfix-external
+mydomain = external.test
+myorigin = $mydomain
+mydestination =
+inet_interfaces = all
+inet_protocols = ipv4
+
+mynetworks = 0.0.0.0/0
+
+smtpd_relay_restrictions =
+  permit_mynetworks,
+  permit
+
+smtpd_recipient_restrictions =
+  permit_mynetworks,
+  permit
+
+relay_domains = *
+
+default_transport = discard
+
+maillog_file = /dev/stdout

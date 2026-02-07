@@ -1,0 +1,44 @@
+compatibility_level = 3.6
+smtpd_banner = $myhostname ESMTP
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+
+myhostname = postfix
+mydomain = test
+myorigin = $mydomain
+mydestination =
+inet_interfaces = all
+inet_protocols = ipv4
+
+mynetworks = 0.0.0.0/0
+
+# Disable reverse DNS for E2E to avoid mail-timeout on unresolved peers
+smtpd_peername_lookup = no
+
+# SASL via Dovecot
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_local_domain =
+
+smtpd_relay_restrictions =
+  permit_sasl_authenticated,
+  reject_unauth_destination
+
+smtpd_sender_restrictions =
+  permit
+
+smtpd_recipient_restrictions =
+  check_policy_service unix:private/mailcloak-policy
+
+# Mailcloak lookup
+virtual_mailbox_domains = sqlite:/etc/postfix/sql/virtual_mailbox_domains.cf
+virtual_alias_maps = socketmap:unix:private/mailcloak-socketmap:alias
+
+# Route external domain to external postfix
+transport_maps = hash:/etc/postfix/transport
+
+# Logging to stdout
+maillog_file = /dev/stdout

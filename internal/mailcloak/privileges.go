@@ -12,7 +12,8 @@ import (
 func DropPrivileges(cfg *Config) error {
 	userName := cfg.Daemon.User
 	if userName == "" {
-		userName = "mailcloak"
+		log.Printf("privileges: no user configured, not dropping privileges")
+		return nil
 	}
 
 	u, err := user.Lookup(userName)
