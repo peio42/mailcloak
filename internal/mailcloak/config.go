@@ -14,10 +14,11 @@ type Config struct {
 	} `yaml:"daemon"`
 
 	Keycloak struct {
-		BaseURL      string `yaml:"base_url"`
-		Realm        string `yaml:"realm"`
-		ClientID     string `yaml:"client_id"`
-		ClientSecret string `yaml:"client_secret"`
+		BaseURL         string `yaml:"base_url"`
+		Realm           string `yaml:"realm"`
+		ClientID        string `yaml:"client_id"`
+		ClientSecret    string `yaml:"client_secret"`
+		CacheTTLSeconds int    `yaml:"cache_ttl_seconds"`
 	} `yaml:"keycloak"`
 
 	SQLite struct {
@@ -25,7 +26,6 @@ type Config struct {
 	} `yaml:"sqlite"`
 
 	Policy struct {
-		CacheTTLSeconds     int    `yaml:"cache_ttl_seconds"`
 		KeycloakFailureMode string `yaml:"keycloak_failure_mode"` // "tempfail" or "dunno"
 	} `yaml:"policy"`
 
@@ -53,9 +53,9 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.SQLite.Path == "" {
 		return nil, fmt.Errorf("missing sqlite.path")
 	}
-	if cfg.Policy.CacheTTLSeconds <= 0 {
-		cfg.Policy.CacheTTLSeconds = 120
-		log.Printf("config: policy.cache_ttl_seconds not set, defaulting to %d", cfg.Policy.CacheTTLSeconds)
+	if cfg.Keycloak.CacheTTLSeconds <= 0 {
+		cfg.Keycloak.CacheTTLSeconds = 120
+		log.Printf("config: keycloak.cache_ttl_seconds not set, defaulting to %d", cfg.Keycloak.CacheTTLSeconds)
 	}
 	if cfg.Policy.KeycloakFailureMode == "" {
 		cfg.Policy.KeycloakFailureMode = "tempfail"

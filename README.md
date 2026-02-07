@@ -172,4 +172,4 @@ rc-service mailcloak start
 
 ## Notes
 - If Keycloak is unavailable, the policy returns `451` by default (configurable via `policy.keycloak_failure_mode`).
-- The policy caches lookups for `policy.cache_ttl_seconds`.
+- The policy caches lookups for `keycloak.cache_ttl_seconds`.

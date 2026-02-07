@@ -1,7 +1,7 @@
 BINARY := mailcloak
 BIN_DIR := bin
 
-.PHONY: build run test tidy clean install
+.PHONY: build run test test-e2e tidy clean install
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
@@ -18,6 +18,9 @@ test:
 	python -m compileall mailcloakctl
 	ruff check --fix mailcloakctl
 	ruff format mailcloakctl
+
+test-e2e:
+	go test -tags=e2e ./tests/e2e -v
 
 tidy:
 	go mod tidy

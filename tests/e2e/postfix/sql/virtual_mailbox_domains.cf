@@ -1,0 +1,2 @@
+dbpath = /var/spool/postfix/mailcloak/state.db
+query = SELECT 1 FROM domains WHERE domain_name = '%s' AND enabled = 1;

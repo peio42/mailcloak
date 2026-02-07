@@ -55,3 +55,7 @@ jobs:
           pip install ruff
           ruff check mailcloakctl
           ruff format --check mailcloakctl
+
+      # ---- E2E checks ----
+      - name: Go test (e2e)
+        run: go test -tags=e2e ./tests/e2e -v

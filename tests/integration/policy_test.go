@@ -24,8 +24,7 @@ func baseConfig(dbPath, policySock, socketmapSock, kcURL, failureMode string) *m
 	cfg.Keycloak.Realm = "test"
 	cfg.Keycloak.ClientID = "test"
 	cfg.Keycloak.ClientSecret = "test"
-
-	cfg.Policy.CacheTTLSeconds = 1
+	cfg.Keycloak.CacheTTLSeconds = 1
 	cfg.Policy.KeycloakFailureMode = failureMode
 	return cfg
 }
