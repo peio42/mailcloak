@@ -1,30 +1,31 @@
 # mailcloak
 
-Mailcloak is a Postfix policy service designed to secure and control mail flows by integrating Postfix, Dovecot, and an identity provider (IdP) such as Keycloak.
+Mailcloak is a Postfix policy service designed to secure and control mail flows by integrating Postfix, Dovecot, and an identity provider (IdP) such as Keycloak or Authentik.
 
 It enables fine-grained authorization of mail senders and recipients based on identities managed in your IdP, while remaining compatible with standard SMTP workflows. Mailcloak is particularly suited for small modern mail infrastructures relying on OIDC authentication.
 
 ## Why Mailcloak?
 
-Mailcloak was born out of a practical limitation: I found no existing solution that could natively combine Keycloak identity management, while providing fine-grained mail authorization. I didn't want users could spoof other users' email addresses, nor maintain separate postfix/dovecot files (and thus have to synchronize them continuously).
+Mailcloak was born out of a practical limitation: I found no existing solution that could natively combine OIDC identity management, while providing fine-grained mail authorization. I didn't want users could spoof other users' email addresses, nor maintain separate postfix/dovecot files (and thus have to synchronize them continuously).
 
 My goal was to build a mail system where:
 
-- **Keycloak is the single source of truth for users**
+- **The configured IdP (Keycloak for me) is the single source of truth for users**
 - Users authenticate to webmail (e.g. Roundcube for me) using **OIDC**
 - Postfix and Dovecot can **actively enforce sender and recipient policies**
   based on the authenticated identity
 - A small number of applications can still send mail using **standard SMTP
   authentication**, with easily renewable token credentials
+- Identity-provider support is **pluggable**: today `keycloak` and `authentik` are implemented, and more providers can be added over time.
 
 ## Features
 
 - 🔐 **OIDC-based identity enforcement**
-  - Users are authenticated via Dovecot using OIDC (Keycloak)
+  - Users are authenticated via Dovecot using OIDC (configured IdP)
   - Postfix authorization decisions are aligned with the authenticated identity
 
 - 📬 **Sender and recipient validation**
-  - Validate both MAIL FROM and RCPT TO against Keycloak identities
+  - Validate both MAIL FROM and RCPT TO against IdP identities
   - Support for user mail addresses and aliases
 
 - 🧩 **Application SMTP access**
@@ -33,12 +34,12 @@ My goal was to build a mail system where:
   - Per-application enable/disable control
 
 - 👥 **Future-ready group handling**
-  - Planned support for Keycloak groups as mail distribution lists
+  - Planned support for IdP groups as mail distribution lists
 
 ## What it does
 - **Policy service** (Postfix policy delegation):
-  - `RCPT` stage: accepts if the recipient exists in Keycloak (primary email) or as a local alias in SQLite.
-  - `MAIL` stage (authenticated submissions): accepts only if the sender is the user’s primary Keycloak email or one of their aliases.
+  - `RCPT` stage: accepts if the recipient exists in the configured IdP (primary email) or as a local alias in SQLite.
+  - `MAIL` stage (authenticated submissions): accepts only if the sender is the user’s primary IdP email or one of their aliases.
   When `smtpd_delay_reject = yes`(which is the default), `MAIL` isn't checked separately; so both checks actually occur during the `RCPT` stage.
 - **Socketmap service**: exposes an `alias` map to Postfix, rewriting alias -> `username@domain`.
 - **SQLite apps database**: stores application SMTP data, including credentials used by Dovecot.
@@ -46,7 +47,7 @@ My goal was to build a mail system where:
 ```mermaid
 flowchart LR
   %% Actors
-  U[User] -->|OIDC login| KC[Keycloak]
+  U[User] -->|OIDC login| IDP[IdP (Keycloak / Authentik)]
   U -->|via webmail| RC[Roundcube]
 
   %% Mail stack
@@ -54,7 +55,7 @@ flowchart LR
   RC -->|SMTP| PF[Postfix]
 
   %% Auth paths
-  DOV <-->|OIDC introspection / user info| KC
+  DOV <-->|OIDC introspection / user info| IDP
   APP[Application / Service] -->|SMTP login/plain| PF
   PF -->|SASL auth| DOV
 
@@ -66,7 +67,7 @@ flowchart LR
   PF -->|alias lookup| MCS[Mailcloak Socketmap]
 
   %% Mailcloak data sources
-  MCP -->|query identities| KC
+  MCP -->|query identities| IDP
   MCP -->|lookup apps/aliases| SQL
   MCS -->|lookup aliases| SQL
 
