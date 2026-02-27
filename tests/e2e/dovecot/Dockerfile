@@ -10,8 +10,6 @@ RUN apt-get update \
     curl \
   && rm -rf /var/lib/apt/lists/*
 
-COPY dovecot.conf /etc/dovecot/dovecot.conf
-
 EXPOSE 143
 
 CMD ["/usr/sbin/dovecot", "-F"]
