@@ -41,6 +41,16 @@ jobs:
       - name: Go test (integration)
         run: go test -tags=integration ./...
 
+      - name: Go coverage (unit)
+        run: |
+          go test ./internal/mailcloak -coverprofile=coverage-unit.out
+          go tool cover -func=coverage-unit.out
+
+      - name: Go coverage (integration)
+        run: |
+          go test -tags=integration ./tests/integration -coverpkg=./internal/mailcloak -coverprofile=coverage-integration.out
+          go tool cover -func=coverage-integration.out
+
       # ---- Python checks ----
       - name: Setup Python
         uses: actions/setup-python@v5

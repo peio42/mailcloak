@@ -37,6 +37,7 @@ func TestPolicy(t *testing.T) {
 		saslUser         string
 		sender           string
 		recipient        string
+		protocolState    string
 		failureMode      string
 		wantActionSubstr string
 	}{
@@ -149,6 +150,15 @@ func TestPolicy(t *testing.T) {
 			failureMode:      "dunno",
 			wantActionSubstr: "action=DUNNO",
 		},
+		{
+			name:             "MAIL state is ignored and returns DUNNO",
+			kcMode:           kcUserAbsent,
+			sender:           "alice@d1.test",
+			recipient:        "alias1@d1.test",
+			protocolState:    "MAIL",
+			failureMode:      "tempfail",
+			wantActionSubstr: "action=DUNNO",
+		},
 	}
 
 	for _, tc := range tests {
@@ -173,9 +183,14 @@ func TestPolicy(t *testing.T) {
 
 			waitUnixReady(t, policySock, 2*time.Second)
 
+			state := tc.protocolState
+			if state == "" {
+				state = "RCPT"
+			}
+
 			resp := policyQuery(t, policySock, map[string]string{
 				"request":             "smtpd_access_policy",
-				"protocol_state":      "RCPT",
+				"protocol_state":      state,
 				"protocol_name":       "ESMTP",
 				"helo_name":           "example.net",
 				"queue_id":            "TEST123",
@@ -188,15 +203,11 @@ func TestPolicy(t *testing.T) {
 				"reverse_client_name": "localhost",
 			})
 
-			t.Cleanup(kc.Close)
-
-			// Normalize a bit for debug
 			respTrim := strings.TrimSpace(resp)
 			if !strings.Contains(respTrim, tc.wantActionSubstr) {
 				t.Fatalf("expected response to contain %q, got:\n%s", tc.wantActionSubstr, respTrim)
 			}
 
-			// Fails if a server has crashed.
 			if err := svc.Err(); err != nil {
 				t.Fatalf("service error: %v", err)
 			}
