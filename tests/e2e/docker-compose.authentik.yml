@@ -1,6 +1,7 @@
 services:
   authentik-postgresql:
     image: docker.io/library/postgres:16-alpine
+    mem_limit: 512m
     environment:
       POSTGRES_USER: authentik
       POSTGRES_PASSWORD: authentik
@@ -13,6 +14,7 @@ services:
 
   authentik-redis:
     image: docker.io/library/redis:alpine
+    mem_limit: 256m
     command: --save 60 1 --loglevel warning
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
@@ -22,6 +24,7 @@ services:
 
   authentik-server:
     image: ghcr.io/goauthentik/server:2025.8
+    mem_limit: 1g
     command: server
     environment:
       AUTHENTIK_SECRET_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -45,6 +48,7 @@ services:
 
   authentik-worker:
     image: ghcr.io/goauthentik/server:2025.8
+    mem_limit: 768m
     command: worker
     user: root
     environment:
