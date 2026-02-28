@@ -32,17 +32,9 @@ func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 }
 
 func ServeSocketmap(ctx context.Context, db *MailcloakDB, l net.Listener) error {
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
-				return nil
-			}
-			log.Printf("socketmap accept error: %v", err)
-			return err
-		}
-		go handleSocketmapConn(conn, db)
-	}
+	return serveListener(ctx, "socketmap", l, func(conn net.Conn) {
+		handleSocketmapConn(conn, db)
+	})
 }
 
 func RunSocketmap(ctx context.Context, cfg *Config, db *MailcloakDB) error {

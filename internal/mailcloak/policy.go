@@ -3,7 +3,6 @@ package mailcloak
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -36,17 +35,9 @@ func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 }
 
 func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, l net.Listener) error {
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
-				return nil
-			}
-			log.Printf("policy accept error: %v", err)
-			return err
-		}
-		go handlePolicyConn(conn, cfg, db, idp)
-	}
+	return serveListener(ctx, "policy", l, func(conn net.Conn) {
+		handlePolicyConn(conn, cfg, db, idp)
+	})
 }
 
 func RunPolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver) error {

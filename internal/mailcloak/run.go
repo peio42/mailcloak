@@ -74,8 +74,7 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 		defer s.wg.Done()
 		if err := ServeSocketmap(ctx, s.db, s.socketmapListener); err != nil {
 			if !isExpectedServeErr(ctx, err) {
-				s.setErr(fmt.Errorf("socketmap: %w", err))
-				log.Printf("socketmap: %v", err)
+				s.handleServeFailure("socketmap", err)
 			}
 		}
 	}()
@@ -86,8 +85,7 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 		defer s.wg.Done()
 		if err := ServePolicy(ctx, cfg, s.db, idp, s.policyListener); err != nil {
 			if !isExpectedServeErr(ctx, err) {
-				s.setErr(fmt.Errorf("policy: %w", err))
-				log.Printf("policy: %v", err)
+				s.handleServeFailure("policy", err)
 			}
 		}
 	}()
@@ -140,6 +138,12 @@ func (s *Service) setErr(e error) {
 	if s.err == nil {
 		s.err = e
 	}
+}
+
+func (s *Service) handleServeFailure(component string, err error) {
+	s.setErr(fmt.Errorf("%s: %w", component, err))
+	log.Printf("%s: %v", component, err)
+	_ = s.Close()
 }
 
 // returns true if the error from a Serve* function is expected during shutdown.
