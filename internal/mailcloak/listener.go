@@ -3,8 +3,11 @@ package mailcloak
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net"
+	"os"
+	"syscall"
 	"time"
 )
 
@@ -16,6 +19,38 @@ const (
 type temporaryError interface {
 	error
 	Temporary() bool
+}
+
+func prepareUnixSocket(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat socket path %s: %w", path, err)
+	}
+
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("socket path exists and is not a unix socket: %s", path)
+	}
+
+	conn, err := net.DialTimeout("unix", path, 200*time.Millisecond)
+	if err == nil {
+		_ = conn.Close()
+		return fmt.Errorf("unix socket already in use: %s", path)
+	}
+	if !isStaleUnixSocketDialErr(err) {
+		return fmt.Errorf("check existing unix socket %s: %w", path, err)
+	}
+
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove stale unix socket %s: %w", path, err)
+	}
+	return nil
+}
+
+func isStaleUnixSocketDialErr(err error) bool {
+	return errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ENOENT)
 }
 
 func serveListener(ctx context.Context, serverName string, l net.Listener, handle func(net.Conn)) error {

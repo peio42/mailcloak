@@ -8,14 +8,15 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 )
 
 func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 	sock := cfg.Sockets.SocketmapSocket
-	_ = os.Remove(sock)
+	if err := prepareUnixSocket(sock); err != nil {
+		return nil, err
+	}
 
 	l, err := net.Listen("unix", sock)
 	if err != nil {

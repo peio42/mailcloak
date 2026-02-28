@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"strings"
 	"time"
 )
@@ -18,7 +17,9 @@ type IdentityResolver interface {
 
 func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 	sock := cfg.Sockets.PolicySocket
-	_ = os.Remove(sock)
+	if err := prepareUnixSocket(sock); err != nil {
+		return nil, err
+	}
 
 	l, err := net.Listen("unix", sock)
 	if err != nil {
