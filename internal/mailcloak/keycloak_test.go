@@ -13,11 +13,11 @@ func newTestKeycloak(t *testing.T, handler http.HandlerFunc) (*Keycloak, *httpte
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	cfg := &Config{}
-	cfg.Keycloak.BaseURL = srv.URL
-	cfg.Keycloak.Realm = "realm"
-	cfg.Keycloak.ClientID = "client"
-	cfg.Keycloak.ClientSecret = "secret"
-	cfg.Keycloak.CacheTTLSeconds = 1
+	cfg.IDP.Keycloak.BaseURL = srv.URL
+	cfg.IDP.Keycloak.Realm = "realm"
+	cfg.IDP.Keycloak.ClientID = "client"
+	cfg.IDP.Keycloak.ClientSecret = "secret"
+	cfg.IDP.Keycloak.CacheTTLSeconds = 1
 	return NewKeycloak(cfg), srv
 }
 

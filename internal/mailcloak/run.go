@@ -61,8 +61,12 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	}
 	s.db = db
 
-	// Create Keycloak client
-	kc := NewKeycloak(cfg)
+	// Create identity provider client
+	idp, err := NewIdentityResolver(cfg)
+	if err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("idp: %w", err)
+	}
 
 	// Start socketmap server
 	s.wg.Add(1)
@@ -80,7 +84,7 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := ServePolicy(ctx, cfg, s.db, kc, s.policyListener); err != nil {
+		if err := ServePolicy(ctx, cfg, s.db, idp, s.policyListener); err != nil {
 			if !isExpectedServeErr(ctx, err) {
 				s.setErr(fmt.Errorf("policy: %w", err))
 				log.Printf("policy: %v", err)

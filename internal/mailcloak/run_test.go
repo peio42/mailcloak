@@ -2,6 +2,7 @@ package mailcloak
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"os/user"
@@ -32,14 +33,15 @@ func testConfig(t *testing.T, dir string) *Config {
 		}{
 			User: "",
 		},
-		Keycloak: struct {
-			BaseURL         string `yaml:"base_url"`
-			Realm           string `yaml:"realm"`
-			ClientID        string `yaml:"client_id"`
-			ClientSecret    string `yaml:"client_secret"`
-			CacheTTLSeconds int    `yaml:"cache_ttl_seconds"`
-		}{
-			CacheTTLSeconds: 1,
+		IDP: IDPConfig{
+			Provider: "keycloak",
+			Keycloak: KeycloakConfig{
+				BaseURL:         "http://example.com",
+				Realm:           "realm",
+				ClientID:        "client",
+				ClientSecret:    "secret",
+				CacheTTLSeconds: 1,
+			},
 		},
 		SQLite: struct {
 			Path string `yaml:"path"`
@@ -47,9 +49,10 @@ func testConfig(t *testing.T, dir string) *Config {
 			Path: filepath.Join(dir, "state.db"),
 		},
 		Policy: struct {
+			IDPFailureMode      string `yaml:"idp_failure_mode"`
 			KeycloakFailureMode string `yaml:"keycloak_failure_mode"`
 		}{
-			KeycloakFailureMode: "tempfail",
+			IDPFailureMode: "tempfail",
 		},
 		Sockets: struct {
 			PolicySocket     string `yaml:"policy_socket"`
@@ -129,5 +132,37 @@ func TestStartSocketmapListenerErrorClosesPolicy(t *testing.T) {
 	if err == nil {
 		_ = conn.Close()
 		t.Fatal("expected policy listener to be closed")
+	}
+}
+
+func TestServiceSetErrKeepsFirst(t *testing.T) {
+	s := &Service{done: make(chan struct{})}
+	err1 := errors.New("first")
+	err2 := errors.New("second")
+
+	s.setErr(err1)
+	s.setErr(err2)
+
+	if got := s.Err(); !errors.Is(got, err1) {
+		t.Fatalf("expected first error to be kept, got %v", got)
+	}
+}
+
+func TestIsExpectedServeErr(t *testing.T) {
+	if !isExpectedServeErr(context.Background(), nil) {
+		t.Fatal("nil error should be expected")
+	}
+	if !isExpectedServeErr(context.Background(), net.ErrClosed) {
+		t.Fatal("net.ErrClosed should be expected")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if !isExpectedServeErr(ctx, errors.New("boom")) {
+		t.Fatal("error should be expected once context is canceled")
+	}
+
+	if isExpectedServeErr(context.Background(), errors.New("boom")) {
+		t.Fatal("unexpected runtime error should not be expected")
 	}
 }

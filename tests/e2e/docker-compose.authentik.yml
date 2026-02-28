@@ -1,0 +1,83 @@
+services:
+  authentik-postgresql:
+    image: docker.io/library/postgres:16-alpine
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: authentik
+      POSTGRES_DB: authentik
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik -d authentik"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  authentik-redis:
+    image: docker.io/library/redis:alpine
+    mem_limit: 256m
+    command: --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2025.8
+    mem_limit: 1g
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_BOOTSTRAP_PASSWORD: admin
+      AUTHENTIK_BOOTSTRAP_TOKEN: bootstrap-token
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./providers/authentik:/providers/authentik:ro
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2025.8
+    mem_limit: 768m
+    command: worker
+    user: root
+    environment:
+      AUTHENTIK_SECRET_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_BOOTSTRAP_PASSWORD: admin
+      AUTHENTIK_BOOTSTRAP_TOKEN: bootstrap-token
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+      authentik-server:
+        condition: service_started
+    volumes:
+      - ./providers/authentik:/providers/authentik:ro
+
+  mailcloak:
+    volumes:
+      - ./providers/authentik/mailcloak.yaml:/config/mailcloak.yaml:ro
+    depends_on:
+      authentik-server:
+        condition: service_started
+
+  dovecot:
+    volumes:
+      - ./providers/authentik/dovecot.conf:/etc/dovecot/dovecot.conf:ro

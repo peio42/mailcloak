@@ -13,45 +13,18 @@ import (
 )
 
 type Keycloak struct {
-	cfg   *Config
+	cfg   KeycloakConfig
 	hc    *http.Client
 	cache *Cache
 }
 
 func NewKeycloak(cfg *Config) *Keycloak {
-	ttl := time.Duration(cfg.Keycloak.CacheTTLSeconds) * time.Second
+	ttl := time.Duration(cfg.IDP.Keycloak.CacheTTLSeconds) * time.Second
 	return &Keycloak{
-		cfg:   cfg,
+		cfg:   cfg.IDP.Keycloak,
 		hc:    &http.Client{Timeout: 5 * time.Second},
 		cache: NewCache(ttl),
 	}
-}
-
-type Cache struct {
-	ttl time.Duration
-	m   map[string]cacheItem
-}
-
-type cacheItem struct {
-	val     string
-	expires time.Time
-	ok      bool
-}
-
-func NewCache(ttl time.Duration) *Cache {
-	return &Cache{ttl: ttl, m: make(map[string]cacheItem)}
-}
-
-func (c *Cache) Get(key string) (string, bool, bool) {
-	it, ok := c.m[key]
-	if !ok || time.Now().After(it.expires) {
-		return "", false, false
-	}
-	return it.val, it.ok, true
-}
-
-func (c *Cache) Put(key, val string, ok bool) {
-	c.m[key] = cacheItem{val: val, ok: ok, expires: time.Now().Add(c.ttl)}
 }
 
 type tokenResp struct {
@@ -62,11 +35,11 @@ type tokenResp struct {
 func (k *Keycloak) token(ctx context.Context) (string, error) {
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
-	form.Set("client_id", k.cfg.Keycloak.ClientID)
-	form.Set("client_secret", k.cfg.Keycloak.ClientSecret)
+	form.Set("client_id", k.cfg.ClientID)
+	form.Set("client_secret", k.cfg.ClientSecret)
 
-	u := strings.TrimRight(k.cfg.Keycloak.BaseURL, "/") +
-		"/realms/" + url.PathEscape(k.cfg.Keycloak.Realm) +
+	u := strings.TrimRight(k.cfg.BaseURL, "/") +
+		"/realms/" + url.PathEscape(k.cfg.Realm) +
 		"/protocol/openid-connect/token"
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", u, strings.NewReader(form.Encode()))
@@ -104,8 +77,8 @@ type kcUser struct {
 }
 
 func (k *Keycloak) adminGet(ctx context.Context, bearer, path string, q url.Values) ([]kcUser, error) {
-	base := strings.TrimRight(k.cfg.Keycloak.BaseURL, "/") +
-		"/admin/realms/" + url.PathEscape(k.cfg.Keycloak.Realm) + path
+	base := strings.TrimRight(k.cfg.BaseURL, "/") +
+		"/admin/realms/" + url.PathEscape(k.cfg.Realm) + path
 
 	u := base
 	if q != nil {

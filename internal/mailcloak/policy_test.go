@@ -1,7 +1,9 @@
 package mailcloak
 
 import (
+	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"mailcloak/internal/mailcloak/testutil"
@@ -9,7 +11,7 @@ import (
 
 func testPolicyConfig(failureMode string) *Config {
 	cfg := &Config{}
-	cfg.Policy.KeycloakFailureMode = failureMode
+	cfg.Policy.IDPFailureMode = failureMode
 	return cfg
 }
 
@@ -179,5 +181,18 @@ func TestPolicy(t *testing.T) {
 				t.Fatalf("expected %q, got %q", tc.expect, got)
 			}
 		})
+	}
+}
+
+func TestRunPolicyOpenListenerError(t *testing.T) {
+	cfg := &Config{}
+	cfg.Sockets.PolicySocket = filepath.Join(t.TempDir(), "missing", "policy.sock")
+
+	db := &MailcloakDB{DB: testutil.NewSQLiteDB(t)}
+	defer db.Close()
+	idp := &testutil.FakeIdentityResolver{}
+
+	if err := RunPolicy(context.Background(), cfg, db, idp); err == nil {
+		t.Fatal("expected listener error")
 	}
 }

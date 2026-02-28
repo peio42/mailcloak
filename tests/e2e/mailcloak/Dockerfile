@@ -18,7 +18,6 @@ RUN apt-get update \
 
 COPY --from=build /out/mailcloak /usr/local/bin/mailcloak
 COPY mailcloakctl /usr/local/bin/mailcloakctl
-COPY tests/e2e/mailcloak/config.yaml /etc/mailcloak/config.yaml
 COPY tests/e2e/mailcloak/seed_sqlite.sh /tmp/seed_sqlite.sh
 
 RUN chmod +x /usr/local/bin/mailcloakctl

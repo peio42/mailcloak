@@ -3,7 +3,9 @@ package mailcloak
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"net"
+	"path/filepath"
 	"testing"
 
 	"mailcloak/internal/mailcloak/testutil"
@@ -75,5 +77,17 @@ func TestHandleSocketmapConn(t *testing.T) {
 				t.Fatalf("expected %q, got %q", tc.expect, got)
 			}
 		})
+	}
+}
+
+func TestRunSocketmapOpenListenerError(t *testing.T) {
+	cfg := &Config{}
+	cfg.Sockets.SocketmapSocket = filepath.Join(t.TempDir(), "missing", "socketmap.sock")
+
+	db := &MailcloakDB{DB: testutil.NewSQLiteDB(t)}
+	defer db.Close()
+
+	if err := RunSocketmap(context.Background(), cfg, db); err == nil {
+		t.Fatal("expected listener error")
 	}
 }

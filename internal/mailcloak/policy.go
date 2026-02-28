@@ -120,8 +120,8 @@ func policy(cfg *Config, db *MailcloakDB, idp IdentityResolver, sender, rcpt, sa
 		defer cancel()
 		exists, err := idp.EmailExists(ctx, rcpt)
 		if err != nil {
-			log.Printf("keycloak email exists lookup error for %s: %v", rcpt, err)
-			if cfg.Policy.KeycloakFailureMode == "dunno" {
+			log.Printf("idp email exists lookup error for %s: %v", rcpt, err)
+			if cfg.Policy.IDPFailureMode == "dunno" {
 				return "DUNNO"
 			}
 			return "451 4.3.0 Temporary authentication/lookup failure"
@@ -169,8 +169,8 @@ func policy(cfg *Config, db *MailcloakDB, idp IdentityResolver, sender, rcpt, sa
 		defer cancel()
 		email, ok, err := idp.ResolveUserEmail(ctx, saslUser)
 		if err != nil {
-			log.Printf("keycloak email-by-user lookup error for %s: %v", saslUser, err)
-			if cfg.Policy.KeycloakFailureMode == "dunno" {
+			log.Printf("idp email-by-user lookup error for %s: %v", saslUser, err)
+			if cfg.Policy.IDPFailureMode == "dunno" {
 				return "DUNNO"
 			}
 			return "451 4.3.0 Temporary authentication/lookup failure"

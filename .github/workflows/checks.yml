@@ -56,6 +56,24 @@ jobs:
           ruff check mailcloakctl
           ruff format --check mailcloakctl
 
-      # ---- E2E checks ----
+  e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [keycloak, authentik]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Go test (e2e)
+        env:
+          E2E_PROVIDER: ${{ matrix.provider }}
         run: go test -tags=e2e ./tests/e2e -v
