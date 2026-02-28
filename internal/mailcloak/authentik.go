@@ -81,7 +81,11 @@ func (a *Authentik) users(ctx context.Context, q url.Values) ([]authentikUser, e
 		u += "?" + q.Encode()
 	}
 
-	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		log.Printf("authentik api request build error: %v", err)
+		return nil, fmt.Errorf("build authentik request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 

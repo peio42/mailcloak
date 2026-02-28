@@ -134,3 +134,57 @@ func TestAuthentikResolveUserEmailBadJSON(t *testing.T) {
 		t.Fatal("expected decode error")
 	}
 }
+
+func TestAuthentikMalformedBaseURLReturnsError(t *testing.T) {
+	t.Parallel()
+
+	a, err := NewAuthentik(AuthentikConfig{
+		BaseURL:         "http://[::1",
+		APIToken:        "test-token",
+		CacheTTLSeconds: 1,
+	})
+	if err != nil {
+		t.Fatalf("NewAuthentik() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		call func(context.Context) error
+	}{
+		{
+			name: "ResolveUserEmail",
+			call: func(ctx context.Context) error {
+				_, _, err := a.ResolveUserEmail(ctx, "alice")
+				return err
+			},
+		},
+		{
+			name: "EmailExists",
+			call: func(ctx context.Context) error {
+				_, err := a.EmailExists(ctx, "alice@example.com")
+				return err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("unexpected panic: %v", r)
+				}
+			}()
+
+			err := tt.call(context.Background())
+			if err == nil {
+				t.Fatalf("expected error for malformed base URL")
+			}
+			if !strings.Contains(err.Error(), "build authentik request") {
+				t.Fatalf("expected wrapped request build error, got: %v", err)
+			}
+		})
+	}
+}
