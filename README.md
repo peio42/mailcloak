@@ -146,12 +146,15 @@ As a side note, Dovecot needs to be able to read the SQLite database to authenti
 Examples:
 
 ```bash
-./mailcloakctl apps add my-app-id "my-app-token"
+./mailcloakctl apps add my-app-id
+printf '%s\n' "$MY_APP_TOKEN" | ./mailcloakctl apps add my-app-id --password-stdin
 ./mailcloakctl apps allow my-app-id sender@example.com
 ./mailcloakctl apps list
 ./mailcloakctl apps disallow my-app-id sender@example.com
 ./mailcloakctl apps del my-app-id
 ```
+
+Passing the password as a positional argument is still supported for explicit non-interactive use, but it is less safe because it can be exposed through shell history and process listings.
 
 ## Postfix integration (example)
 Policy service (smtpd_recipient_restrictions):
