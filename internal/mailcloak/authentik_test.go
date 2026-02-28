@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -90,5 +91,46 @@ func TestAuthentikEmailExists(t *testing.T) {
 	}
 	if !exists {
 		t.Fatalf("expected email to exist")
+	}
+}
+
+func TestNewAuthentikMissingToken(t *testing.T) {
+	_, err := NewAuthentik(AuthentikConfig{
+		BaseURL:         "http://authentik.local",
+		APIToken:        " ",
+		CacheTTLSeconds: 1,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing token")
+	}
+}
+
+func TestAuthentikEmailExistsAPINon2xx(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusBadGateway)
+	}
+	idp, srv := newTestAuthentik(t, handler)
+	defer srv.Close()
+
+	_, err := idp.EmailExists(context.Background(), "alice@example.com")
+	if err == nil {
+		t.Fatal("expected non-2xx error")
+	}
+	if !strings.Contains(err.Error(), "http 502") {
+		t.Fatalf("expected 502 error, got %v", err)
+	}
+}
+
+func TestAuthentikResolveUserEmailBadJSON(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("{bad-json"))
+	}
+	idp, srv := newTestAuthentik(t, handler)
+	defer srv.Close()
+
+	_, _, err := idp.ResolveUserEmail(context.Background(), "alice")
+	if err == nil {
+		t.Fatal("expected decode error")
 	}
 }

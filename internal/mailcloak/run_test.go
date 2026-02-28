@@ -2,6 +2,7 @@ package mailcloak
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"os/user"
@@ -131,5 +132,37 @@ func TestStartSocketmapListenerErrorClosesPolicy(t *testing.T) {
 	if err == nil {
 		_ = conn.Close()
 		t.Fatal("expected policy listener to be closed")
+	}
+}
+
+func TestServiceSetErrKeepsFirst(t *testing.T) {
+	s := &Service{done: make(chan struct{})}
+	err1 := errors.New("first")
+	err2 := errors.New("second")
+
+	s.setErr(err1)
+	s.setErr(err2)
+
+	if got := s.Err(); !errors.Is(got, err1) {
+		t.Fatalf("expected first error to be kept, got %v", got)
+	}
+}
+
+func TestIsExpectedServeErr(t *testing.T) {
+	if !isExpectedServeErr(context.Background(), nil) {
+		t.Fatal("nil error should be expected")
+	}
+	if !isExpectedServeErr(context.Background(), net.ErrClosed) {
+		t.Fatal("net.ErrClosed should be expected")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if !isExpectedServeErr(ctx, errors.New("boom")) {
+		t.Fatal("error should be expected once context is canceled")
+	}
+
+	if isExpectedServeErr(context.Background(), errors.New("boom")) {
+		t.Fatal("unexpected runtime error should not be expected")
 	}
 }

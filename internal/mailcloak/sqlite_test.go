@@ -1,6 +1,9 @@
 package mailcloak
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"mailcloak/internal/mailcloak/testutil"
@@ -149,5 +152,60 @@ func TestDomainEnabled(t *testing.T) {
 	}
 	if local {
 		t.Fatalf("expected missing.com to be false")
+	}
+}
+
+func TestOpenMailcloakDBAndClose(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "mailcloak.db")
+	if err := os.WriteFile(dbPath, []byte{}, 0o600); err != nil {
+		t.Fatalf("write db file: %v", err)
+	}
+
+	db, err := OpenMailcloakDB(dbPath)
+	if err != nil {
+		t.Fatalf("OpenMailcloakDB error: %v", err)
+	}
+
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close error: %v", err)
+	}
+}
+
+func TestEnsureDBExists(t *testing.T) {
+	dir := t.TempDir()
+	existing := filepath.Join(dir, "mailcloak.db")
+	if err := os.WriteFile(existing, []byte{}, 0o600); err != nil {
+		t.Fatalf("write db file: %v", err)
+	}
+
+	cases := []struct {
+		name    string
+		path    string
+		wantErr string
+	}{
+		{name: "memory path", path: ":memory:"},
+		{name: "sqlite uri", path: "file::memory:?cache=shared"},
+		{name: "empty path", path: "", wantErr: "sqlite path is empty"},
+		{name: "missing directory", path: filepath.Join(dir, "missing", "mailcloak.db"), wantErr: "sqlite db directory not found"},
+		{name: "missing file in existing directory", path: filepath.Join(dir, "missing.db"), wantErr: "sqlite db not found"},
+		{name: "existing file", path: existing},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ensureDBExists(tc.path)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+			}
+		})
 	}
 }

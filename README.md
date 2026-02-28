@@ -47,7 +47,7 @@ My goal was to build a mail system where:
 ```mermaid
 flowchart LR
   %% Actors
-  U[User] -->|OIDC login| IDP[IdP (Keycloak / Authentik)]
+  U[User] -->|OIDC login| IDP[IdP - Keycloak / Authentik]
   U -->|via webmail| RC[Roundcube]
 
   %% Mail stack
