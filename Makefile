@@ -1,11 +1,16 @@
 BINARY := mailcloak
 BIN_DIR := bin
 
-.PHONY: build run test test-e2e tidy clean install
+.PHONY: build venv run test test-e2e tidy clean install
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 	go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)
+
+venv:
+	python -m venv .venv
+	.venv/bin/pip install -r requirements.txt
+	.venv/bin/pip install ruff
 
 run:
 	go run ./cmd/$(BINARY)

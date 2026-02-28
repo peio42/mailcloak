@@ -10,11 +10,6 @@ RUN apt-get update \
     netcat-openbsd \
   && rm -rf /var/lib/apt/lists/*
 
-# Install a newer swaks with OAUTHBEARER support
-RUN curl -fsSL https://raw.githubusercontent.com/jetmore/swaks/master/swaks \
-  -o /usr/local/bin/swaks \
-  && chmod +x /usr/local/bin/swaks
-
 ENV PATH="/usr/local/bin:${PATH}"
 
 COPY main.cf /etc/postfix/main.cf
