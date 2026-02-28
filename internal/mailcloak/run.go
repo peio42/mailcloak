@@ -14,9 +14,10 @@ type Service struct {
 	socketmapListener net.Listener
 	db                *MailcloakDB
 
-	wg   sync.WaitGroup
-	done chan struct{}
-	once sync.Once
+	wg     sync.WaitGroup
+	done   chan struct{}
+	once   sync.Once
+	dbOnce sync.Once
 
 	errMu sync.Mutex
 	err   error
@@ -64,6 +65,7 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	// Create identity provider client
 	idp, err := NewIdentityResolver(cfg)
 	if err != nil {
+		s.closeDB()
 		_ = s.Close()
 		return nil, fmt.Errorf("idp: %w", err)
 	}
@@ -72,7 +74,7 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := ServeSocketmap(ctx, s.db, s.socketmapListener); err != nil {
+		if err := s.serveSocketmap(ctx); err != nil {
 			if !isExpectedServeErr(ctx, err) {
 				s.handleServeFailure("socketmap", err)
 			}
@@ -83,7 +85,7 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := ServePolicy(ctx, cfg, s.db, idp, s.policyListener); err != nil {
+		if err := s.servePolicy(ctx, cfg, idp); err != nil {
 			if !isExpectedServeErr(ctx, err) {
 				s.handleServeFailure("policy", err)
 			}
@@ -99,6 +101,7 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	// Done closer
 	go func() {
 		s.wg.Wait()
+		s.closeDB()
 		close(s.done)
 	}()
 
@@ -144,6 +147,38 @@ func (s *Service) handleServeFailure(component string, err error) {
 	s.setErr(fmt.Errorf("%s: %w", component, err))
 	log.Printf("%s: %v", component, err)
 	_ = s.Close()
+}
+
+func (s *Service) closeDB() {
+	s.dbOnce.Do(func() {
+		if s.db == nil {
+			return
+		}
+		if err := s.db.Close(); err != nil {
+			s.setErr(fmt.Errorf("sqlite close: %w", err))
+			log.Printf("sqlite close: %v", err)
+		}
+	})
+}
+
+func (s *Service) servePolicy(ctx context.Context, cfg *Config, idp IdentityResolver) error {
+	return serveListener(ctx, "policy", s.policyListener, func(conn net.Conn) {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			handlePolicyConn(conn, cfg, s.db, idp)
+		}()
+	})
+}
+
+func (s *Service) serveSocketmap(ctx context.Context) error {
+	return serveListener(ctx, "socketmap", s.socketmapListener, func(conn net.Conn) {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			handleSocketmapConn(conn, s.db)
+		}()
+	})
 }
 
 // returns true if the error from a Serve* function is expected during shutdown.

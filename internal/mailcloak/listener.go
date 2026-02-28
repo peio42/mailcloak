@@ -50,7 +50,7 @@ func serveListener(ctx context.Context, serverName string, l net.Listener, handl
 		}
 
 		retryDelay = 0
-		go handle(conn)
+		handle(conn)
 	}
 }
 

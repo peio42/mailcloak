@@ -36,7 +36,7 @@ func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 
 func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, l net.Listener) error {
 	return serveListener(ctx, "policy", l, func(conn net.Conn) {
-		handlePolicyConn(conn, cfg, db, idp)
+		go handlePolicyConn(conn, cfg, db, idp)
 	})
 }
 

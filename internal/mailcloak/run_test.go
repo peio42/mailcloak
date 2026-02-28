@@ -126,6 +126,9 @@ func TestStartShutdown(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for shutdown")
 	}
+	if err := svc.db.DB.Ping(); err == nil {
+		t.Fatal("expected sqlite db to be closed after shutdown")
+	}
 	if err := svc.Err(); err != nil {
 		t.Fatalf("unexpected service error: %v", err)
 	}

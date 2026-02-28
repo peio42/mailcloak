@@ -33,7 +33,7 @@ func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 
 func ServeSocketmap(ctx context.Context, db *MailcloakDB, l net.Listener) error {
 	return serveListener(ctx, "socketmap", l, func(conn net.Conn) {
-		handleSocketmapConn(conn, db)
+		go handleSocketmapConn(conn, db)
 	})
 }
 
