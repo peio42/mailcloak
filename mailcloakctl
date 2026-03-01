@@ -363,8 +363,11 @@ def read_password_from_stdin() -> str:
 
 
 def prompt_for_password() -> str:
-    password = getpass.getpass("App password: ")
-    confirm = getpass.getpass("Confirm password: ")
+    try:
+        password = getpass.getpass("App password: ")
+        confirm = getpass.getpass("Confirm password: ")
+    except (EOFError, KeyboardInterrupt):
+        raise SystemExit("password entry cancelled") from None
     if password != confirm:
         raise SystemExit("passwords do not match")
     return password

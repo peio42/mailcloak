@@ -126,11 +126,63 @@ func TestStartShutdown(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for shutdown")
 	}
-	if err := svc.db.DB.Ping(); err == nil {
-		t.Fatal("expected sqlite db to be closed after shutdown")
-	}
 	if err := svc.Err(); err != nil {
 		t.Fatalf("unexpected service error: %v", err)
+	}
+}
+
+func TestServiceCloseDoesNotCloseSQLite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.db")
+	if err := os.WriteFile(path, []byte{}, 0o600); err != nil {
+		t.Fatalf("write db: %v", err)
+	}
+
+	db, err := OpenMailcloakDB(path)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+
+	svc := &Service{
+		db:   db,
+		done: make(chan struct{}),
+	}
+	defer func() {
+		if err := svc.closeDB(); err != nil {
+			t.Fatalf("close db: %v", err)
+		}
+	}()
+
+	if err := svc.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := svc.db.DB.Ping(); err != nil {
+		t.Fatalf("expected sqlite db to remain open after Close, got %v", err)
+	}
+}
+
+func TestServiceCloseDBClosesSQLite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.db")
+	if err := os.WriteFile(path, []byte{}, 0o600); err != nil {
+		t.Fatalf("write db: %v", err)
+	}
+
+	db, err := OpenMailcloakDB(path)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+
+	svc := &Service{
+		db:   db,
+		done: make(chan struct{}),
+	}
+
+	if err := svc.closeDB(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+	if err := svc.db.DB.Ping(); err == nil {
+		t.Fatal("expected sqlite db to be closed after closeDB")
 	}
 }
 
@@ -288,5 +340,35 @@ func TestHandleServeFailureClosesService(t *testing.T) {
 	}
 	if _, err := socketmapListener.Accept(); !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("expected socketmap listener to be closed, got %v", err)
+	}
+}
+
+func TestShutdownDoesNotWaitForActiveSocketmapConnections(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, dir)
+	if err := os.WriteFile(cfg.SQLite.Path, []byte{}, 0o600); err != nil {
+		t.Fatalf("write db: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	svc, err := Start(ctx, cfg)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	conn, err := net.Dial("unix", cfg.Sockets.SocketmapSocket)
+	if err != nil {
+		t.Fatalf("dial socketmap: %v", err)
+	}
+	defer conn.Close()
+
+	cancel()
+
+	select {
+	case <-svc.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for shutdown with active socketmap connection")
 	}
 }

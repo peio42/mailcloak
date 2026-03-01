@@ -14,3 +14,6 @@ vendor/
 
 # Checks
 .ruff_cache/
+
+# Python
+__pycache__/
