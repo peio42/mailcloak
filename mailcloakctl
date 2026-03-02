@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import getpass
 import sqlite3
 import sys
 import time
@@ -346,6 +347,48 @@ def cmd_init(db_path: str):
     con.close()
 
 
+def trim_one_trailing_newline(value: str) -> str:
+    if value.endswith("\r\n"):
+        return value[:-2]
+    if value.endswith("\n") or value.endswith("\r"):
+        return value[:-1]
+    return value
+
+
+def read_password_from_stdin() -> str:
+    password = sys.stdin.read()
+    if password == "":
+        raise SystemExit("missing password on stdin")
+    return trim_one_trailing_newline(password)
+
+
+def prompt_for_password() -> str:
+    try:
+        password = getpass.getpass("App password: ")
+        confirm = getpass.getpass("Confirm password: ")
+    except (EOFError, KeyboardInterrupt):
+        raise SystemExit("password entry cancelled") from None
+    if password != confirm:
+        raise SystemExit("passwords do not match")
+    if password.strip() == "":
+        raise SystemExit("empty password not allowed")
+    return password
+
+
+def resolve_app_password(args) -> str:
+    if args.password is not None and args.password_stdin:
+        raise SystemExit("use either a positional password or --password-stdin, not both")
+    if args.password is not None:
+        return args.password
+    if args.password_stdin:
+        return read_password_from_stdin()
+    if sys.stdin.isatty():
+        return prompt_for_password()
+    raise SystemExit(
+        "missing password: pass it as an argument, use --password-stdin, or run interactively"
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DEFAULT_DB)
@@ -396,7 +439,12 @@ def main():
 
     p_apps_add = apps_sub.add_parser("add")
     p_apps_add.add_argument("app_id")
-    p_apps_add.add_argument("password")
+    p_apps_add.add_argument("password", nargs="?")
+    p_apps_add.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="read the app password from stdin",
+    )
 
     p_apps_del = apps_sub.add_parser("del")
     p_apps_del.add_argument("app_id")
@@ -442,7 +490,7 @@ def main():
             if args.cmd == "list":
                 cmd_apps_list(con)
             elif args.cmd == "add":
-                cmd_apps_add(con, args.app_id, args.password)
+                cmd_apps_add(con, args.app_id, resolve_app_password(args))
             elif args.cmd == "del":
                 cmd_apps_del(con, args.app_id)
             elif args.cmd == "allow":

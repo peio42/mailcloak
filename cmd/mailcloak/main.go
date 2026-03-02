@@ -41,9 +41,14 @@ func main() {
 	// Handle signals
 	ch := make(chan os.Signal, 2)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-	<-ch
-	log.Printf("shutdown")
-	cancel()
-
+	select {
+	case <-ch:
+		log.Printf("shutdown")
+		cancel()
+	case <-svc.Done():
+	}
 	<-svc.Done()
+	if err := svc.Err(); err != nil {
+		log.Fatalf("service stopped: %v", err)
+	}
 }

@@ -8,14 +8,15 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 )
 
 func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 	sock := cfg.Sockets.SocketmapSocket
-	_ = os.Remove(sock)
+	if err := prepareUnixSocket(sock); err != nil {
+		return nil, err
+	}
 
 	l, err := net.Listen("unix", sock)
 	if err != nil {
@@ -32,17 +33,9 @@ func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 }
 
 func ServeSocketmap(ctx context.Context, db *MailcloakDB, l net.Listener) error {
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
-				return nil
-			}
-			log.Printf("socketmap accept error: %v", err)
-			return err
-		}
+	return serveListener(ctx, "socketmap", l, func(conn net.Conn) {
 		go handleSocketmapConn(conn, db)
-	}
+	})
 }
 
 func RunSocketmap(ctx context.Context, cfg *Config, db *MailcloakDB) error {
