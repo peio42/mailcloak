@@ -370,6 +370,8 @@ def prompt_for_password() -> str:
         raise SystemExit("password entry cancelled") from None
     if password != confirm:
         raise SystemExit("passwords do not match")
+    if password.strip() == "":
+        raise SystemExit("empty password not allowed")
     return password
 
 
