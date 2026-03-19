@@ -14,10 +14,14 @@ type Service struct {
 	socketmapListener net.Listener
 	db                *MailcloakDB
 
-	wg     sync.WaitGroup
-	done   chan struct{}
-	once   sync.Once
-	dbOnce sync.Once
+	serveWG sync.WaitGroup
+	connWG  sync.WaitGroup
+	done    chan struct{}
+	once    sync.Once
+	dbOnce  sync.Once
+
+	connsMu sync.Mutex
+	conns   map[net.Conn]struct{}
 
 	errMu sync.Mutex
 	err   error
@@ -25,7 +29,8 @@ type Service struct {
 
 func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	s := &Service{
-		done: make(chan struct{}),
+		done:  make(chan struct{}),
+		conns: make(map[net.Conn]struct{}),
 	}
 
 	// Open listeners
@@ -71,10 +76,10 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	}
 
 	// Start socketmap server
-	s.wg.Add(1)
+	s.serveWG.Add(1)
 	go func() {
-		defer s.wg.Done()
-		if err := ServeSocketmap(ctx, s.db, s.socketmapListener); err != nil {
+		defer s.serveWG.Done()
+		if err := ServeSocketmap(ctx, s.db, s.socketmapListener, s.startConn); err != nil {
 			if !isExpectedServeErr(ctx, err) {
 				s.handleServeFailure("socketmap", err)
 			}
@@ -82,10 +87,10 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	}()
 
 	// Start policy server
-	s.wg.Add(1)
+	s.serveWG.Add(1)
 	go func() {
-		defer s.wg.Done()
-		if err := ServePolicy(ctx, cfg, s.db, idp, s.policyListener); err != nil {
+		defer s.serveWG.Done()
+		if err := ServePolicy(ctx, cfg, s.db, idp, s.policyListener, s.startConn); err != nil {
 			if !isExpectedServeErr(ctx, err) {
 				s.handleServeFailure("policy", err)
 			}
@@ -96,12 +101,6 @@ func Start(ctx context.Context, cfg *Config) (*Service, error) {
 	go func() {
 		<-ctx.Done()
 		_ = s.Close()
-	}()
-
-	// Done closer
-	go func() {
-		s.wg.Wait()
-		close(s.done)
 	}()
 
 	log.Printf("mailcloak started")
@@ -121,6 +120,17 @@ func (s *Service) Close() error {
 			if e := s.socketmapListener.Close(); e != nil && err == nil {
 				err = e
 			}
+		}
+		s.serveWG.Wait()
+		if e := s.closeActiveConns(); e != nil && err == nil {
+			err = e
+		}
+		s.connWG.Wait()
+		if e := s.closeDB(); e != nil && err == nil {
+			err = e
+		}
+		if s.done != nil {
+			close(s.done)
 		}
 	})
 	return err
@@ -145,7 +155,9 @@ func (s *Service) setErr(e error) {
 func (s *Service) handleServeFailure(component string, err error) {
 	s.setErr(fmt.Errorf("%s: %w", component, err))
 	log.Printf("%s: %v", component, err)
-	_ = s.Close()
+	go func() {
+		_ = s.Close()
+	}()
 }
 
 func (s *Service) closeDB() error {
@@ -161,6 +173,48 @@ func (s *Service) closeDB() error {
 		}
 	})
 	return closeErr
+}
+
+func (s *Service) startConn(conn net.Conn, handle func()) {
+	s.trackConn(conn)
+	s.connWG.Add(1)
+	go func() {
+		defer s.connWG.Done()
+		defer s.untrackConn(conn)
+		handle()
+	}()
+}
+
+func (s *Service) trackConn(conn net.Conn) {
+	s.connsMu.Lock()
+	defer s.connsMu.Unlock()
+	if s.conns == nil {
+		s.conns = make(map[net.Conn]struct{})
+	}
+	s.conns[conn] = struct{}{}
+}
+
+func (s *Service) untrackConn(conn net.Conn) {
+	s.connsMu.Lock()
+	defer s.connsMu.Unlock()
+	delete(s.conns, conn)
+}
+
+func (s *Service) closeActiveConns() error {
+	s.connsMu.Lock()
+	conns := make([]net.Conn, 0, len(s.conns))
+	for conn := range s.conns {
+		conns = append(conns, conn)
+	}
+	s.connsMu.Unlock()
+
+	var err error
+	for _, conn := range conns {
+		if e := conn.Close(); e != nil && err == nil && !errors.Is(e, net.ErrClosed) {
+			err = e
+		}
+	}
+	return err
 }
 
 // returns true if the error from a Serve* function is expected during shutdown.
