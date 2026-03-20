@@ -32,9 +32,16 @@ func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 	return l, nil
 }
 
-func ServeSocketmap(ctx context.Context, db *MailcloakDB, l net.Listener) error {
+func ServeSocketmap(ctx context.Context, db *MailcloakDB, l net.Listener, start func(net.Conn, func())) error {
+	if start == nil {
+		start = func(conn net.Conn, handle func()) {
+			go handle()
+		}
+	}
 	return serveListener(ctx, "socketmap", l, func(conn net.Conn) {
-		go handleSocketmapConn(conn, db)
+		start(conn, func() {
+			handleSocketmapConn(conn, db)
+		})
 	})
 }
 
@@ -43,7 +50,7 @@ func RunSocketmap(ctx context.Context, cfg *Config, db *MailcloakDB) error {
 	if err != nil {
 		return err
 	}
-	return ServeSocketmap(ctx, db, l)
+	return ServeSocketmap(ctx, db, l, nil)
 }
 
 // Postfix socketmap framing: "<len>:<payload>,"

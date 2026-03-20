@@ -3,6 +3,7 @@ package mailcloak
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"os/user"
@@ -126,12 +127,15 @@ func TestStartShutdown(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for shutdown")
 	}
+	if err := svc.db.DB.Ping(); err == nil {
+		t.Fatal("expected sqlite db to be closed after shutdown")
+	}
 	if err := svc.Err(); err != nil {
 		t.Fatalf("unexpected service error: %v", err)
 	}
 }
 
-func TestServiceCloseDoesNotCloseSQLite(t *testing.T) {
+func TestServiceCloseClosesSQLiteAndDone(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.db")
 	if err := os.WriteFile(path, []byte{}, 0o600); err != nil {
@@ -147,17 +151,17 @@ func TestServiceCloseDoesNotCloseSQLite(t *testing.T) {
 		db:   db,
 		done: make(chan struct{}),
 	}
-	defer func() {
-		if err := svc.closeDB(); err != nil {
-			t.Fatalf("close db: %v", err)
-		}
-	}()
 
 	if err := svc.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if err := svc.db.DB.Ping(); err != nil {
-		t.Fatalf("expected sqlite db to remain open after Close, got %v", err)
+	if err := svc.db.DB.Ping(); err == nil {
+		t.Fatal("expected sqlite db to be closed after Close")
+	}
+	select {
+	case <-svc.Done():
+	default:
+		t.Fatal("expected done channel to be closed after Close")
 	}
 }
 
@@ -331,6 +335,12 @@ func TestHandleServeFailureClosesService(t *testing.T) {
 	failErr := errors.New("boom")
 	svc.handleServeFailure("policy", failErr)
 
+	select {
+	case <-svc.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for service shutdown after serve failure")
+	}
+
 	if got := svc.Err(); !errors.Is(got, failErr) {
 		t.Fatalf("expected recorded error %v, got %v", failErr, got)
 	}
@@ -343,7 +353,7 @@ func TestHandleServeFailureClosesService(t *testing.T) {
 	}
 }
 
-func TestShutdownDoesNotWaitForActiveSocketmapConnections(t *testing.T) {
+func TestShutdownClosesActiveSocketmapConnections(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(t, dir)
 	if err := os.WriteFile(cfg.SQLite.Path, []byte{}, 0o600); err != nil {
@@ -364,11 +374,34 @@ func TestShutdownDoesNotWaitForActiveSocketmapConnections(t *testing.T) {
 	}
 	defer conn.Close()
 
+	readDone := make(chan error, 1)
+	go func() {
+		var buf [1]byte
+		_, err := conn.Read(buf[:])
+		readDone <- err
+	}()
+
 	cancel()
 
 	select {
 	case <-svc.Done():
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for shutdown with active socketmap connection")
+	}
+
+	select {
+	case err := <-readDone:
+		if err == nil {
+			t.Fatal("expected active socketmap connection to be closed during shutdown")
+		}
+		if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("expected closed connection error, got %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for active socketmap connection to close")
+	}
+
+	if err := svc.db.DB.Ping(); err == nil {
+		t.Fatal("expected sqlite db to be closed after shutdown")
 	}
 }

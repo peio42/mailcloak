@@ -35,9 +35,16 @@ func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 	return l, nil
 }
 
-func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, l net.Listener) error {
+func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, l net.Listener, start func(net.Conn, func())) error {
+	if start == nil {
+		start = func(conn net.Conn, handle func()) {
+			go handle()
+		}
+	}
 	return serveListener(ctx, "policy", l, func(conn net.Conn) {
-		go handlePolicyConn(conn, cfg, db, idp)
+		start(conn, func() {
+			handlePolicyConn(conn, cfg, db, idp)
+		})
 	})
 }
 
@@ -46,7 +53,7 @@ func RunPolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityRe
 	if err != nil {
 		return err
 	}
-	return ServePolicy(ctx, cfg, db, idp, l)
+	return ServePolicy(ctx, cfg, db, idp, l, nil)
 }
 
 func handlePolicyConn(conn net.Conn, cfg *Config, db *MailcloakDB, idp IdentityResolver) {
