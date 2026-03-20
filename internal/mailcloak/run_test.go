@@ -389,16 +389,13 @@ func TestShutdownClosesActiveSocketmapConnections(t *testing.T) {
 		t.Fatal("timeout waiting for shutdown with active socketmap connection")
 	}
 
-	_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 	select {
 	case err := <-readDone:
 		if err == nil {
 			t.Fatal("expected active socketmap connection to be closed during shutdown")
 		}
 		if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-			if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
-				t.Fatalf("expected closed connection error, got %v", err)
-			}
+			t.Fatalf("expected closed connection error, got %v", err)
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("timeout waiting for active socketmap connection to close")

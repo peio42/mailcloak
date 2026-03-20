@@ -15,8 +15,6 @@ type IdentityResolver interface {
 	EmailExists(ctx context.Context, email string) (bool, error)
 }
 
-type connStarter func(net.Conn, func())
-
 func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 	sock := cfg.Sockets.PolicySocket
 	if err := prepareUnixSocket(sock); err != nil {
@@ -37,7 +35,7 @@ func OpenPolicyListener(cfg *Config) (net.Listener, error) {
 	return l, nil
 }
 
-func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, l net.Listener, start connStarter) error {
+func ServePolicy(ctx context.Context, cfg *Config, db *MailcloakDB, idp IdentityResolver, l net.Listener, start func(net.Conn, func())) error {
 	if start == nil {
 		start = func(conn net.Conn, handle func()) {
 			go handle()

@@ -32,7 +32,7 @@ func OpenSocketmapListener(cfg *Config) (net.Listener, error) {
 	return l, nil
 }
 
-func ServeSocketmap(ctx context.Context, db *MailcloakDB, l net.Listener, start connStarter) error {
+func ServeSocketmap(ctx context.Context, db *MailcloakDB, l net.Listener, start func(net.Conn, func())) error {
 	if start == nil {
 		start = func(conn net.Conn, handle func()) {
 			go handle()
