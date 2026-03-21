@@ -8,8 +8,12 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: release-${{ github.event.inputs.version }}
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   preflight:
@@ -98,6 +102,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     needs: [e2e, build]
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout (for mailcloakctl)
