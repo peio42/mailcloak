@@ -10,7 +10,7 @@ build:
 venv:
 	python -m venv .venv
 	.venv/bin/pip install -r requirements.txt
-	.venv/bin/pip install ruff
+	.venv/bin/pip install ruff==0.15.1
 
 run:
 	go run ./cmd/$(BINARY)
