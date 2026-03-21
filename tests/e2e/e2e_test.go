@@ -275,8 +275,14 @@ func (authentikProvider) FetchToken(t *testing.T, runner *e2eRunner, username, p
 func selectedProviders(t *testing.T) []providerHarness {
 	t.Helper()
 
-	switch strings.TrimSpace(strings.ToLower(os.Getenv("E2E_PROVIDER"))) {
-	case "", "keycloak":
+	provider := strings.TrimSpace(strings.ToLower(os.Getenv("E2E_PROVIDER")))
+	if provider == "" {
+		t.Fatalf("E2E_PROVIDER must be set (keycloak, authentik, or all)")
+		return nil
+	}
+
+	switch provider {
+	case "keycloak":
 		return []providerHarness{keycloakProvider{}}
 	case "authentik":
 		return []providerHarness{authentikProvider{}}
