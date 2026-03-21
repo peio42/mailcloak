@@ -14,11 +14,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ---- Go checks ----
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -43,7 +43,7 @@ jobs:
 
       # ---- Python checks ----
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
@@ -52,7 +52,7 @@ jobs:
 
       - name: Python lint (ruff)
         run: |
-          pip install ruff
+          pip install ruff==0.15.1
           ruff check mailcloakctl
           ruff format --check mailcloakctl
 

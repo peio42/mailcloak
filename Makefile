@@ -10,7 +10,7 @@ build:
 venv:
 	python -m venv .venv
 	.venv/bin/pip install -r requirements.txt
-	.venv/bin/pip install ruff
+	.venv/bin/pip install ruff==0.15.1
 
 run:
 	go run ./cmd/$(BINARY)
@@ -25,7 +25,12 @@ test:
 	ruff format mailcloakctl
 
 test-e2e:
-	go test -tags=e2e ./tests/e2e -v
+ifneq ($(strip $(IDP)),)
+	E2E_PROVIDER=$(IDP) go test -tags=e2e ./tests/e2e -v
+else
+	@echo "IDP must be set for e2e tests (keycloak or authentik). Example: make test-e2e IDP=keycloak"
+	@exit 1
+endif
 
 tidy:
 	go mod tidy
@@ -44,8 +49,6 @@ install: build
 #   make e2e-down IDP=authentik
 #   make e2e-up-keycloak
 #   make e2e-down-authentik
-
-IDP ?= keycloak
 
 E2E_PROJECT := e2e-$(IDP)
 E2E_DIR := tests/e2e
