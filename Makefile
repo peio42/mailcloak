@@ -25,12 +25,10 @@ test:
 	ruff format mailcloakctl
 
 test-e2e:
-ifeq ($(origin IDP),command line)
-	E2E_PROVIDER=$(IDP) go test -tags=e2e ./tests/e2e -v
-else ifeq ($(origin IDP),environment)
+ifneq ($(strip $(IDP)),)
 	E2E_PROVIDER=$(IDP) go test -tags=e2e ./tests/e2e -v
 else
-	@echo "IDP must be set for e2e tests (keycloak, authentik, or all). Example: make test-e2e IDP=keycloak"
+	@echo "IDP must be set for e2e tests (keycloak or authentik). Example: make test-e2e IDP=keycloak"
 	@exit 1
 endif
 
@@ -51,8 +49,6 @@ install: build
 #   make e2e-down IDP=authentik
 #   make e2e-up-keycloak
 #   make e2e-down-authentik
-
-IDP ?= keycloak
 
 E2E_PROJECT := e2e-$(IDP)
 E2E_DIR := tests/e2e
