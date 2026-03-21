@@ -1,15 +1,60 @@
-name: release
+name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event.inputs.version }}
+  cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ensure workflow runs from main
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "This workflow must be run from main (got ${GITHUB_REF})"
+            exit 1
+          fi
+      - name: Validate version
+        run: |
+          echo "${{ github.event.inputs.version }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'
+
+  e2e:
+    needs: preflight
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [keycloak, authentik]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Go test (e2e)
+        env:
+          E2E_PROVIDER: ${{ matrix.provider }}
+        run: go test -tags=e2e ./tests/e2e -v
+
   build:
+    needs: preflight
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -20,6 +65,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -32,7 +79,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: "0"
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ github.event.inputs.version }}
         run: |
           set -eux
           mkdir -p dist
@@ -52,9 +99,11 @@ jobs:
           path: dist/*.tar.gz
           if-no-files-found: error
 
-  release:
+  publish:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [e2e, build]
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout (for mailcloakctl)
@@ -85,12 +134,21 @@ jobs:
           echo "Generated checksums.txt:"
           cat checksums.txt
 
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ github.event.inputs.version }}" -m "mailcloak ${{ github.event.inputs.version }}"
+          git push origin "${{ github.event.inputs.version }}"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.version }}
+          generate_release_notes: true
           files: |
             dist/*.tar.gz
             dist/mailcloakctl
             dist/checksums.txt
-          generate_release_notes: true
           overwrite_files: true
