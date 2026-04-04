@@ -16,7 +16,10 @@ run:
 	go run ./cmd/$(BINARY)
 
 test:
-	@files=$$(gofmt -l .); \
+	@files=$$(gofmt -l .); status=$$?; \
+	if [ $$status -ne 0 ]; then \
+		exit $$status; \
+	fi; \
 	if [ -n "$$files" ]; then \
 		echo "Files not formatted:"; \
 		echo "$$files"; \
