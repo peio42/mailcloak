@@ -1,7 +1,7 @@
 BINARY := mailcloak
 BIN_DIR := bin
 
-.PHONY: build venv run test test-e2e tidy clean install
+.PHONY: build venv run test fix test-e2e tidy clean install
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
@@ -16,11 +16,21 @@ run:
 	go run ./cmd/$(BINARY)
 
 test:
-	gofmt -w .
+	@files=$$(gofmt -l .); \
+	if [ -n "$$files" ]; then \
+		echo "Files not formatted:"; \
+		echo "$$files"; \
+		exit 1; \
+	fi
 	go vet ./...
 	go test -race ./...
 	go test -tags=integration ./...
 	python -m compileall mailcloakctl
+	ruff check mailcloakctl
+	ruff format --check mailcloakctl
+
+fix:
+	gofmt -w .
 	ruff check --fix mailcloakctl
 	ruff format mailcloakctl
 
@@ -57,8 +67,11 @@ E2E_IDP  := $(E2E_DIR)/docker-compose.$(IDP).yml
 
 # Validate IDP early with a friendly error
 VALID_IDPS := keycloak authentik
+E2E_IDP_REQUIRED_GOALS := e2e-up e2e-down e2e-logs e2e-ps e2e-restart e2e-seed e2e-reset
+ifneq ($(filter $(E2E_IDP_REQUIRED_GOALS),$(MAKECMDGOALS)),)
 ifeq (,$(filter $(IDP),$(VALID_IDPS)))
 $(error Invalid IDP: "$(IDP)". Possible values: $(VALID_IDPS))
+endif
 endif
 
 # Compose command assembled once
