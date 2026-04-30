@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -122,6 +123,62 @@ func TestAdminHTTPRejectsBadJSON(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPSetupAndIDPTest(t *testing.T) {
+	cfg, closeServer := testKeycloakConfig(t)
+	defer closeServer()
+
+	dir := t.TempDir()
+	cfg.SQLite.Path = filepath.Join(dir, "state.db")
+	configPath := filepath.Join(dir, "config.yaml")
+
+	db := newAdminTestDB(t)
+	defer db.Close()
+	handler := NewAdminHTTPHandler(db, AdminHTTPOptions{
+		ConfigPath: configPath,
+		DBPath:     cfg.SQLite.Path,
+	})
+
+	body := jsonBody(t, setupConfigRequest{Config: cfg})
+	rr := adminHTTPRequest(t, handler, http.MethodPost, "/api/setup/validate", body, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("validate setup status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = adminHTTPRequest(t, handler, http.MethodPost, "/api/idp/test", body, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("idp test status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var idpResult IDPTestResult
+	if err := json.Unmarshal(rr.Body.Bytes(), &idpResult); err != nil {
+		t.Fatalf("decode idp result: %v", err)
+	}
+	if !idpResult.OK || idpResult.Provider != "keycloak" {
+		t.Fatalf("unexpected idp result: %#v", idpResult)
+	}
+
+	applyBody := jsonBody(t, SetupApplyRequest{
+		Config:  cfg,
+		InitDB:  true,
+		TestIDP: true,
+	})
+	rr = adminHTTPRequest(t, handler, http.MethodPost, "/api/setup/apply", applyBody, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("apply setup status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = adminHTTPRequest(t, handler, http.MethodGet, "/api/setup/status", "", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("setup status code = %d body=%s", rr.Code, rr.Body.String())
+	}
+	var status SetupStatus
+	if err := json.Unmarshal(rr.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode setup status: %v", err)
+	}
+	if !status.ConfigExists || !status.ConfigValid || !status.ConfigWritable || !status.DBExists || !status.DBInitialized || !status.DBWritable {
+		t.Fatalf("unexpected setup status: %#v", status)
+	}
+}
+
 func adminHTTPRequest(t *testing.T, handler http.Handler, method, target, body, token string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, target, bytes.NewBufferString(body))
@@ -134,4 +191,13 @@ func adminHTTPRequest(t *testing.T, handler http.Handler, method, target, body, 
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 	return rr
+}
+
+func jsonBody(t *testing.T, value any) string {
+	t.Helper()
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal json body: %v", err)
+	}
+	return string(body)
 }

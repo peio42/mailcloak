@@ -16,6 +16,7 @@ import (
 
 func main() {
 	dbPath := flag.String("db", mailcloak.DefaultDBPath, "SQLite database path")
+	configPath := flag.String("config", mailcloak.DefaultConfigPath, "Mailcloak config path")
 	listenAddr := flag.String("listen", "127.0.0.1:8080", "HTTP listen address")
 	token := flag.String("token", "", "Bearer token required for API requests")
 	initDB := flag.Bool("init-db", false, "create or initialize the SQLite database before serving")
@@ -50,7 +51,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *listenAddr,
-		Handler:           mailcloak.NewAdminHTTPHandler(db, mailcloak.AdminHTTPOptions{Token: adminToken}),
+		Handler:           mailcloak.NewAdminHTTPHandler(db, mailcloak.AdminHTTPOptions{Token: adminToken, ConfigPath: *configPath, DBPath: *dbPath}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

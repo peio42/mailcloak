@@ -11,17 +11,34 @@ import (
 )
 
 type AdminHTTPOptions struct {
-	Token string
+	Token      string
+	ConfigPath string
+	DBPath     string
 }
 
 func NewAdminHTTPHandler(db *MailcloakDB, opts AdminHTTPOptions) http.Handler {
-	h := &adminHTTPHandler{db: db, token: strings.TrimSpace(opts.Token)}
+	configPath := strings.TrimSpace(opts.ConfigPath)
+	if configPath == "" {
+		configPath = DefaultConfigPath
+	}
+	dbPath := strings.TrimSpace(opts.DBPath)
+	if dbPath == "" {
+		dbPath = DefaultDBPath
+	}
+	h := &adminHTTPHandler{
+		db:         db,
+		token:      strings.TrimSpace(opts.Token),
+		configPath: configPath,
+		dbPath:     dbPath,
+	}
 	return h
 }
 
 type adminHTTPHandler struct {
-	db    *MailcloakDB
-	token string
+	db         *MailcloakDB
+	token      string
+	configPath string
+	dbPath     string
 }
 
 type apiError struct {
@@ -43,6 +60,14 @@ func (h *adminHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case r.URL.Path == "/api/setup/status":
+		h.handleSetupStatus(w, r)
+	case r.URL.Path == "/api/setup/validate":
+		h.handleSetupValidate(w, r)
+	case r.URL.Path == "/api/setup/apply":
+		h.handleSetupApply(w, r)
+	case r.URL.Path == "/api/idp/test":
+		h.handleIDPTest(w, r)
 	case r.URL.Path == "/api/domains":
 		h.handleDomains(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/domains/"):
@@ -58,6 +83,85 @@ func (h *adminHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeAPIError(w, http.StatusNotFound, "not found")
 	}
+}
+
+type setupConfigRequest struct {
+	Config Config `json:"config"`
+}
+
+func (h *adminHTTPHandler) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeAPIError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, GetSetupStatus(h.configPath, h.dbPath))
+}
+
+func (h *adminHTTPHandler) handleSetupValidate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req setupConfigRequest
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeAPIError(w, statusForDecodeError(err), err.Error())
+		return
+	}
+	cfg := req.Config
+	if cfg.SQLite.Path == "" {
+		cfg.SQLite.Path = h.dbPath
+	}
+	if err := ValidateConfig(&cfg); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"valid": true,
+	})
+}
+
+func (h *adminHTTPHandler) handleSetupApply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req SetupApplyRequest
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeAPIError(w, statusForDecodeError(err), err.Error())
+		return
+	}
+	if req.Config.SQLite.Path != "" && req.Config.SQLite.Path != h.dbPath {
+		writeAPIError(w, http.StatusBadRequest, "config.sqlite.path must match the admin server db path")
+		return
+	}
+	result, err := ApplySetup(r.Context(), h.configPath, h.dbPath, req)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *adminHTTPHandler) handleIDPTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeAPIError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req setupConfigRequest
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeAPIError(w, statusForDecodeError(err), err.Error())
+		return
+	}
+	cfg := req.Config
+	if cfg.SQLite.Path == "" {
+		cfg.SQLite.Path = h.dbPath
+	}
+	result, err := TestIdentityProvider(r.Context(), &cfg)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *adminHTTPHandler) authorized(r *http.Request) bool {

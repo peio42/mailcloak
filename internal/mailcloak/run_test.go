@@ -64,7 +64,7 @@ func testConfig(t *testing.T, dir string) *Config {
 	userName, groupName := testSocketOwner(t)
 	return &Config{
 		Daemon: struct {
-			User string `yaml:"user"`
+			User string `yaml:"user" json:"user"`
 		}{
 			User: "",
 		},
@@ -79,22 +79,22 @@ func testConfig(t *testing.T, dir string) *Config {
 			},
 		},
 		SQLite: struct {
-			Path string `yaml:"path"`
+			Path string `yaml:"path" json:"path"`
 		}{
 			Path: filepath.Join(dir, "state.db"),
 		},
 		Policy: struct {
-			IDPFailureMode      string `yaml:"idp_failure_mode"`
-			KeycloakFailureMode string `yaml:"keycloak_failure_mode"`
+			IDPFailureMode      string `yaml:"idp_failure_mode" json:"idp_failure_mode"`
+			KeycloakFailureMode string `yaml:"keycloak_failure_mode,omitempty" json:"-"`
 		}{
 			IDPFailureMode: "tempfail",
 		},
 		Sockets: struct {
-			PolicySocket     string `yaml:"policy_socket"`
-			SocketmapSocket  string `yaml:"socketmap_socket"`
-			SocketOwnerUser  string `yaml:"socket_owner_user"`
-			SocketOwnerGroup string `yaml:"socket_owner_group"`
-			SocketMode       string `yaml:"socket_mode"`
+			PolicySocket     string `yaml:"policy_socket" json:"policy_socket"`
+			SocketmapSocket  string `yaml:"socketmap_socket" json:"socketmap_socket"`
+			SocketOwnerUser  string `yaml:"socket_owner_user" json:"socket_owner_user"`
+			SocketOwnerGroup string `yaml:"socket_owner_group" json:"socket_owner_group"`
+			SocketMode       string `yaml:"socket_mode" json:"socket_mode"`
 		}{
 			PolicySocket:     filepath.Join(dir, "policy.sock"),
 			SocketmapSocket:  filepath.Join(dir, "socketmap.sock"),

@@ -138,16 +138,68 @@ The Go admin API can serve the same database administration primitives over HTTP
 
 ```bash
 MAILCLOAK_ADMIN_TOKEN="$(openssl rand -hex 32)" \
-./bin/mailcloak-admin --db /var/lib/mailcloak/state.db --listen 127.0.0.1:8080
+./bin/mailcloak-admin \
+  --config /etc/mailcloak/config.yaml \
+  --db /var/lib/mailcloak/state.db \
+  --listen 127.0.0.1:8080
 ```
 
 For a first local bootstrap, the service can initialize the SQLite database before serving:
 
 ```bash
-./bin/mailcloak-admin --db /var/lib/mailcloak/state.db --init-db --token "$MAILCLOAK_ADMIN_TOKEN"
+./bin/mailcloak-admin \
+  --config /etc/mailcloak/config.yaml \
+  --db /var/lib/mailcloak/state.db \
+  --init-db \
+  --token "$MAILCLOAK_ADMIN_TOKEN"
 ```
 
-The API exposes `/api/health`, `/api/domains`, `/api/aliases`, `/api/apps`, and `/api/apps/{app_id}/senders`.
+The API exposes:
+- `GET /api/setup/status`
+- `POST /api/setup/validate`
+- `POST /api/setup/apply`
+- `POST /api/idp/test`
+- `GET/POST /api/domains`
+- `GET/POST /api/aliases`
+- `GET/POST /api/apps`
+- `POST /api/apps/{app_id}/senders`
+
+Setup endpoints accept a JSON `config` object matching `config.yaml`. Example:
+
+```json
+{
+  "config": {
+    "idp": {
+      "provider": "keycloak",
+      "keycloak": {
+        "base_url": "https://keycloak.example.test",
+        "realm": "mail",
+        "client_id": "mailcloak-admin",
+        "client_secret": "secret",
+        "cache_ttl_seconds": 120
+      }
+    },
+    "sqlite": {
+      "path": "/var/lib/mailcloak/state.db"
+    },
+    "policy": {
+      "idp_failure_mode": "tempfail"
+    },
+    "sockets": {
+      "policy_socket": "/var/spool/postfix/private/mailcloak-policy",
+      "socketmap_socket": "/var/spool/postfix/private/mailcloak-socketmap",
+      "socket_owner_user": "postfix",
+      "socket_owner_group": "postfix",
+      "socket_mode": "0660"
+    },
+    "daemon": {
+      "user": "mailcloak"
+    }
+  },
+  "init_db": true,
+  "test_idp": true
+}
+```
 
 ### Aliases
 You can manage aliases using the helper script:
