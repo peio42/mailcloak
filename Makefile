@@ -1,4 +1,5 @@
 BINARY := mailcloak
+CTL_BINARY := mailcloakctl
 BIN_DIR := bin
 
 .PHONY: build venv run test fix test-e2e tidy clean install
@@ -6,6 +7,8 @@ BIN_DIR := bin
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 	go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+	go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/$(CTL_BINARY) ./cmd/$(CTL_BINARY)
 
 venv:
 	python -m venv .venv
@@ -49,11 +52,11 @@ tidy:
 	go mod tidy
 
 clean:
-	rm -f $(BIN_DIR)/$(BINARY)
+	rm -f $(BIN_DIR)/$(BINARY) $(BIN_DIR)/$(CTL_BINARY)
 
 install: build
 	sudo install -m 0755 $(BIN_DIR)/$(BINARY) /usr/local/sbin/$(BINARY)
-	sudo install -m 0755 mailcloakctl /usr/local/sbin/mailcloakctl
+	sudo install -m 0755 $(BIN_DIR)/$(CTL_BINARY) /usr/local/sbin/$(CTL_BINARY)
 
 # --- E2E env selection --------------------------------------------------------
 

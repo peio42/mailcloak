@@ -77,15 +77,16 @@ flowchart LR
 
 ## Project layout
 - `cmd/mailcloak/` – main package entrypoint
+- `cmd/mailcloakctl/` – Go CLI helper for bootstrap and database administration
 - `internal/mailcloak/` – daemon sources
 - `go.mod` / `go.sum` – Go module files
 - `docs/configs/config.yaml.sample` – sample config to copy to `/etc/mailcloak/config.yaml`
 - `docs/configs/openrc-mailcloak` – OpenRC service file
 - `docs/configs/postfix-main.cf` – Postfix config snippet
 - `docs/configs/dovecot.conf` – Dovecot config snippet
-- `mailcloakctl` – Python CLI helper to manage database
+- `mailcloakctl` – legacy Python CLI helper kept during the Go CLI transition
 
-## Build the binary
+## Build the binaries
 From the repository root:
 
 ```bash
