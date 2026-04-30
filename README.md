@@ -77,6 +77,7 @@ flowchart LR
 
 ## Project layout
 - `cmd/mailcloak/` – main package entrypoint
+- `cmd/mailcloak-admin/` – HTTP admin API entrypoint
 - `cmd/mailcloakctl/` – Go CLI helper for bootstrap and database administration
 - `internal/mailcloak/` – daemon sources
 - `go.mod` / `go.sum` – Go module files
@@ -131,6 +132,22 @@ If your database is stored elsewhere, specify the path using the `--db` option:
 ./mailcloakctl --db /path/to/mailcloak.db init
 ```
 This is also valid for all other commands for `mailcloakctl`.
+
+### HTTP admin API
+The Go admin API can serve the same database administration primitives over HTTP:
+
+```bash
+MAILCLOAK_ADMIN_TOKEN="$(openssl rand -hex 32)" \
+./bin/mailcloak-admin --db /var/lib/mailcloak/state.db --listen 127.0.0.1:8080
+```
+
+For a first local bootstrap, the service can initialize the SQLite database before serving:
+
+```bash
+./bin/mailcloak-admin --db /var/lib/mailcloak/state.db --init-db --token "$MAILCLOAK_ADMIN_TOKEN"
+```
+
+The API exposes `/api/health`, `/api/domains`, `/api/aliases`, `/api/apps`, and `/api/apps/{app_id}/senders`.
 
 ### Aliases
 You can manage aliases using the helper script:
