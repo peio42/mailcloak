@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mailcloak Admin</title>
+    <link rel="stylesheet" href="/assets/app.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Mailcloak Admin</h1>
+          <p id="apiState" class="muted">Checking API status</p>
+        </div>
+        <form id="tokenPanel" class="top-actions">
+          <label class="token-field">
+            Admin token
+            <input id="adminToken" type="password" autocomplete="current-password" placeholder="Bearer token">
+          </label>
+          <button id="saveToken" type="submit">Use Token</button>
+        </form>
+        <button id="refreshAll" class="icon-button" type="button" title="Refresh data" aria-label="Refresh data">
+          <span aria-hidden="true">Refresh</span>
+        </button>
+      </header>
+
+      <nav class="tabs" aria-label="Admin sections">
+        <button class="tab is-active" type="button" data-view="overview" disabled>Overview</button>
+        <button class="tab" type="button" data-view="setup" disabled>Setup</button>
+        <button class="tab" type="button" data-view="domains" disabled>Domains</button>
+        <button class="tab" type="button" data-view="aliases" disabled>Aliases</button>
+        <button class="tab" type="button" data-view="apps" disabled>Apps</button>
+      </nav>
+
+      <main>
+        <section id="view-overview" class="view is-active" aria-labelledby="overviewTitle">
+          <div class="section-head">
+            <h2 id="overviewTitle">System Status</h2>
+          </div>
+          <div class="status-grid">
+            <div class="status-panel">
+              <h3>Configuration</h3>
+              <dl id="configStatus" class="kv-list"></dl>
+            </div>
+            <div class="status-panel">
+              <h3>Database</h3>
+              <dl id="dbStatus" class="kv-list"></dl>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-setup" class="view" aria-labelledby="setupTitle">
+          <div class="section-head">
+            <h2 id="setupTitle">Initial Setup</h2>
+            <div class="actions">
+              <button id="validateSetup" type="button">Validate</button>
+              <button id="testIDP" type="button">Test IdP</button>
+              <button id="applySetup" class="primary" type="button">Apply</button>
+            </div>
+          </div>
+          <form id="setupForm" class="form-grid">
+            <fieldset>
+              <legend>Identity Provider</legend>
+              <label>
+                Provider
+                <select name="provider">
+                  <option value="keycloak">Keycloak</option>
+                  <option value="authentik">Authentik</option>
+                </select>
+              </label>
+              <label>
+                Base URL
+                <input name="base_url" type="url" placeholder="https://idp.example.test" required>
+              </label>
+              <div data-provider-fields="keycloak">
+                <label>
+                  Realm
+                  <input name="realm" type="text" autocomplete="off">
+                </label>
+                <label>
+                  Client ID
+                  <input name="client_id" type="text" autocomplete="off">
+                </label>
+                <label>
+                  Client Secret
+                  <input name="client_secret" type="password" autocomplete="new-password">
+                </label>
+              </div>
+              <div data-provider-fields="authentik" hidden>
+                <label>
+                  API Token
+                  <input name="api_token" type="password" autocomplete="new-password">
+                </label>
+              </div>
+              <label>
+                Cache TTL seconds
+                <input name="cache_ttl_seconds" type="number" min="1" step="1" value="120">
+              </label>
+            </fieldset>
+
+            <fieldset>
+              <legend>Local Service</legend>
+              <label>
+                SQLite path
+                <input name="sqlite_path" type="text" value="/var/lib/mailcloak/state.db">
+              </label>
+              <label>
+                Config path
+                <input id="configPathDisplay" type="text" disabled>
+              </label>
+              <label>
+                Policy failure mode
+                <select name="idp_failure_mode">
+                  <option value="tempfail">tempfail</option>
+                  <option value="dunno">dunno</option>
+                </select>
+              </label>
+              <label>
+                Daemon user
+                <input name="daemon_user" type="text" value="mailcloak">
+              </label>
+              <label>
+                Policy socket
+                <input name="policy_socket" type="text" value="/var/spool/postfix/private/mailcloak-policy">
+              </label>
+              <label>
+                Socketmap socket
+                <input name="socketmap_socket" type="text" value="/var/spool/postfix/private/mailcloak-socketmap">
+              </label>
+              <label>
+                Socket owner user
+                <input name="socket_owner_user" type="text" value="postfix">
+              </label>
+              <label>
+                Socket owner group
+                <input name="socket_owner_group" type="text" value="postfix">
+              </label>
+              <label>
+                Socket mode
+                <input name="socket_mode" type="text" value="0660">
+              </label>
+              <label class="checkbox-row">
+                <input name="init_db" type="checkbox" checked>
+                Initialize database
+              </label>
+              <label class="checkbox-row">
+                <input name="test_idp" type="checkbox" checked>
+                Test IdP before applying
+              </label>
+              <label class="checkbox-row">
+                <input name="overwrite" type="checkbox">
+                Overwrite existing config
+              </label>
+            </fieldset>
+          </form>
+        </section>
+
+        <section id="view-domains" class="view" aria-labelledby="domainsTitle">
+          <div class="section-head">
+            <h2 id="domainsTitle">Domains</h2>
+            <form id="domainForm" class="inline-form">
+              <input name="domain_name" type="text" placeholder="example.com" required>
+              <button class="primary" type="submit">Add</button>
+            </form>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Domain</th><th>Status</th><th class="right">Actions</th></tr>
+              </thead>
+              <tbody id="domainsTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="view-aliases" class="view" aria-labelledby="aliasesTitle">
+          <div class="section-head">
+            <h2 id="aliasesTitle">Aliases</h2>
+          </div>
+          <form id="aliasForm" class="inline-form wide">
+            <input name="alias_email" type="email" placeholder="alias@example.com" required>
+            <input name="target_user" type="text" placeholder="target user" required>
+            <button class="primary" type="submit">Add</button>
+          </form>
+          <div class="filter-row">
+            <label>
+              Filter user
+              <input id="aliasUserFilter" type="text" placeholder="username">
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Alias</th><th>User</th><th>Status</th><th class="right">Actions</th></tr>
+              </thead>
+              <tbody id="aliasesTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="view-apps" class="view" aria-labelledby="appsTitle">
+          <div class="section-head">
+            <h2 id="appsTitle">Applications</h2>
+          </div>
+          <form id="appForm" class="inline-form wide">
+            <input name="app_id" type="text" placeholder="New application" required>
+            <input name="password" type="password" placeholder="initial password" required>
+            <button class="primary" type="submit">Add</button>
+          </form>
+          <div class="filter-row">
+            <label>
+              Filter app
+              <input id="appFilter" type="text" placeholder="application">
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>App</th><th>Senders</th><th>Status</th><th class="right">Actions</th></tr>
+              </thead>
+              <tbody id="appsTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

@@ -123,6 +123,30 @@ func TestAdminHTTPRejectsBadJSON(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPRejectsDuplicateDomainAndAlias(t *testing.T) {
+	db := newAdminTestDB(t)
+	defer db.Close()
+	handler := NewAdminHTTPHandler(db, AdminHTTPOptions{})
+
+	rr := adminHTTPRequest(t, handler, http.MethodPost, "/api/domains", `{"domain_name":"example.com"}`, "")
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("create domain status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = adminHTTPRequest(t, handler, http.MethodPost, "/api/domains", `{"domain_name":"Example.COM"}`, "")
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("duplicate domain status = %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = adminHTTPRequest(t, handler, http.MethodPost, "/api/aliases", `{"alias_email":"alias@example.com","target_user":"alice"}`, "")
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("create alias status = %d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = adminHTTPRequest(t, handler, http.MethodPost, "/api/aliases", `{"alias_email":"Alias@Example.COM","target_user":"bob"}`, "")
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("duplicate alias status = %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestAdminHTTPSetupAndIDPTest(t *testing.T) {
 	cfg, closeServer := testKeycloakConfig(t)
 	defer closeServer()

@@ -46,6 +46,9 @@ type apiError struct {
 }
 
 func (h *adminHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if serveAdminUI(w, r) {
+		return
+	}
 	if r.URL.Path == "/api/health" {
 		h.handleHealth(w, r)
 		return
@@ -200,7 +203,7 @@ func (h *adminHTTPHandler) handleDomains(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if err := h.db.UpsertDomain(r.Context(), req.DomainName); err != nil {
-			writeAPIError(w, http.StatusBadRequest, err.Error())
+			writeAPIError(w, statusForAdminError(err), err.Error())
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -266,7 +269,7 @@ func (h *adminHTTPHandler) handleAliases(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if err := h.db.UpsertAlias(r.Context(), req.AliasEmail, req.TargetUser); err != nil {
-			writeAPIError(w, http.StatusBadRequest, err.Error())
+			writeAPIError(w, statusForAdminError(err), err.Error())
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -472,6 +475,13 @@ var errMissingJSONBody = errors.New("missing json body")
 func statusForDecodeError(err error) int {
 	if errors.Is(err, errMissingJSONBody) {
 		return http.StatusBadRequest
+	}
+	return http.StatusBadRequest
+}
+
+func statusForAdminError(err error) int {
+	if errors.Is(err, ErrAlreadyExists) {
+		return http.StatusConflict
 	}
 	return http.StatusBadRequest
 }

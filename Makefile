@@ -3,7 +3,7 @@ CTL_BINARY := mailcloakctl
 ADMIN_BINARY := mailcloak-admin
 BIN_DIR := bin
 
-.PHONY: build venv run test fix test-e2e tidy clean install
+.PHONY: build run test fix test-e2e tidy clean install
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
@@ -12,11 +12,6 @@ build:
 	go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/$(CTL_BINARY) ./cmd/$(CTL_BINARY)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 	go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/$(ADMIN_BINARY) ./cmd/$(ADMIN_BINARY)
-
-venv:
-	python -m venv .venv
-	.venv/bin/pip install -r requirements.txt
-	.venv/bin/pip install ruff==0.15.1
 
 run:
 	go run ./cmd/$(BINARY)
@@ -34,14 +29,9 @@ test:
 	go vet ./...
 	go test -race ./...
 	go test -tags=integration ./...
-	python -m compileall mailcloakctl
-	ruff check mailcloakctl
-	ruff format --check mailcloakctl
 
 fix:
 	gofmt -w .
-	ruff check --fix mailcloakctl
-	ruff format mailcloakctl
 
 test-e2e:
 ifneq ($(strip $(IDP)),)

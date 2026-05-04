@@ -13,6 +13,8 @@ import (
 
 const DefaultDBPath = "/var/lib/mailcloak/state.db"
 
+var ErrAlreadyExists = errors.New("already exists")
+
 type Domain struct {
 	DomainName string `json:"domain_name"`
 	Enabled    bool   `json:"enabled"`
@@ -213,11 +215,21 @@ func (a *MailcloakDB) UpsertDomain(ctx context.Context, domainName string) error
 	if domainName == "" {
 		return fmt.Errorf("domain name is empty")
 	}
+	var existing string
+	err := a.DB.QueryRowContext(ctx, `SELECT domain_name FROM domains WHERE domain_name=?`, domainName).Scan(&existing)
+	if err == nil {
+		return fmt.Errorf("domain already exists: %s: %w", domainName, ErrAlreadyExists)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	now := time.Now().Unix()
-	_, err := a.DB.ExecContext(ctx, `
+	_, err = a.DB.ExecContext(ctx, `
 INSERT INTO domains(domain_name, enabled, updated_at) VALUES(?,1,?)
-ON CONFLICT(domain_name) DO UPDATE SET enabled=1, updated_at=excluded.updated_at
 `, domainName, now)
+	if isUniqueConstraintError(err) {
+		return fmt.Errorf("domain already exists: %s: %w", domainName, ErrAlreadyExists)
+	}
 	return err
 }
 
@@ -277,16 +289,22 @@ func (a *MailcloakDB) UpsertAlias(ctx context.Context, aliasEmail, targetUser st
 	if err != nil {
 		return err
 	}
+	var existingAlias string
+	err = a.DB.QueryRowContext(ctx, `SELECT alias_email FROM aliases WHERE alias_email=?`, aliasEmail).Scan(&existingAlias)
+	if err == nil {
+		return fmt.Errorf("alias already exists: %s: %w", aliasEmail, ErrAlreadyExists)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	now := time.Now().Unix()
 	_, err = a.DB.ExecContext(ctx, `
 INSERT INTO aliases(alias_email, target_user, alias_domain_name, enabled, updated_at)
 VALUES(?,?,?,1,?)
-ON CONFLICT(alias_email) DO UPDATE SET
-    target_user=excluded.target_user,
-    alias_domain_name=excluded.alias_domain_name,
-    enabled=1,
-    updated_at=excluded.updated_at
 `, aliasEmail, targetUser, existingDomain, now)
+	if isUniqueConstraintError(err) {
+		return fmt.Errorf("alias already exists: %s: %w", aliasEmail, ErrAlreadyExists)
+	}
 	return err
 }
 
@@ -423,4 +441,8 @@ func boolInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func isUniqueConstraintError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "unique constraint")
 }

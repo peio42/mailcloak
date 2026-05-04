@@ -2,6 +2,7 @@ package mailcloak
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -108,6 +109,26 @@ func TestUpsertAliasRequiresLocalDomain(t *testing.T) {
 	err := db.UpsertAlias(context.Background(), "alias@example.com", "alice")
 	if err == nil || !strings.Contains(err.Error(), "domain not found: example.com") {
 		t.Fatalf("expected domain error, got %v", err)
+	}
+}
+
+func TestAdminRejectsDuplicateDomainAndAlias(t *testing.T) {
+	ctx := context.Background()
+	db := newAdminTestDB(t)
+	defer db.Close()
+
+	if err := db.UpsertDomain(ctx, "example.com"); err != nil {
+		t.Fatalf("add domain: %v", err)
+	}
+	if err := db.UpsertDomain(ctx, "Example.COM"); err == nil || !errors.Is(err, ErrAlreadyExists) {
+		t.Fatalf("expected duplicate domain error, got %v", err)
+	}
+
+	if err := db.UpsertAlias(ctx, "alias@example.com", "alice"); err != nil {
+		t.Fatalf("add alias: %v", err)
+	}
+	if err := db.UpsertAlias(ctx, "Alias@Example.COM", "bob"); err == nil || !errors.Is(err, ErrAlreadyExists) {
+		t.Fatalf("expected duplicate alias error, got %v", err)
 	}
 }
 
