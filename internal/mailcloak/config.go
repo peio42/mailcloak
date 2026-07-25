@@ -10,49 +10,49 @@ import (
 )
 
 type KeycloakConfig struct {
-	BaseURL         string `yaml:"base_url"`
-	Realm           string `yaml:"realm"`
-	ClientID        string `yaml:"client_id"`
-	ClientSecret    string `yaml:"client_secret"`
-	CacheTTLSeconds int    `yaml:"cache_ttl_seconds"`
+	BaseURL         string `yaml:"base_url" json:"base_url"`
+	Realm           string `yaml:"realm" json:"realm"`
+	ClientID        string `yaml:"client_id" json:"client_id"`
+	ClientSecret    string `yaml:"client_secret" json:"client_secret"`
+	CacheTTLSeconds int    `yaml:"cache_ttl_seconds" json:"cache_ttl_seconds"`
 }
 
 type AuthentikConfig struct {
-	BaseURL         string `yaml:"base_url"`
-	APIToken        string `yaml:"api_token"`
-	CacheTTLSeconds int    `yaml:"cache_ttl_seconds"`
+	BaseURL         string `yaml:"base_url" json:"base_url"`
+	APIToken        string `yaml:"api_token" json:"api_token"`
+	CacheTTLSeconds int    `yaml:"cache_ttl_seconds" json:"cache_ttl_seconds"`
 }
 
 type IDPConfig struct {
-	Provider  string          `yaml:"provider"`
-	Keycloak  KeycloakConfig  `yaml:"keycloak"`
-	Authentik AuthentikConfig `yaml:"authentik"`
+	Provider  string          `yaml:"provider" json:"provider"`
+	Keycloak  KeycloakConfig  `yaml:"keycloak" json:"keycloak"`
+	Authentik AuthentikConfig `yaml:"authentik" json:"authentik"`
 }
 
 type Config struct {
 	Daemon struct {
-		User string `yaml:"user"`
-	} `yaml:"daemon"`
+		User string `yaml:"user" json:"user"`
+	} `yaml:"daemon" json:"daemon"`
 
-	IDP      IDPConfig      `yaml:"idp"`
-	Keycloak KeycloakConfig `yaml:"keycloak"`
+	IDP      IDPConfig      `yaml:"idp" json:"idp"`
+	Keycloak KeycloakConfig `yaml:"keycloak,omitempty" json:"keycloak,omitempty"`
 
 	SQLite struct {
-		Path string `yaml:"path"`
-	} `yaml:"sqlite"`
+		Path string `yaml:"path" json:"path"`
+	} `yaml:"sqlite" json:"sqlite"`
 
 	Policy struct {
-		IDPFailureMode      string `yaml:"idp_failure_mode"`      // "tempfail" or "dunno"
-		KeycloakFailureMode string `yaml:"keycloak_failure_mode"` // legacy
-	} `yaml:"policy"`
+		IDPFailureMode      string `yaml:"idp_failure_mode" json:"idp_failure_mode"` // "tempfail" or "dunno"
+		KeycloakFailureMode string `yaml:"keycloak_failure_mode,omitempty" json:"-"` // legacy
+	} `yaml:"policy" json:"policy"`
 
 	Sockets struct {
-		PolicySocket     string `yaml:"policy_socket"`
-		SocketmapSocket  string `yaml:"socketmap_socket"`
-		SocketOwnerUser  string `yaml:"socket_owner_user"`
-		SocketOwnerGroup string `yaml:"socket_owner_group"`
-		SocketMode       string `yaml:"socket_mode"`
-	} `yaml:"sockets"`
+		PolicySocket     string `yaml:"policy_socket" json:"policy_socket"`
+		SocketmapSocket  string `yaml:"socketmap_socket" json:"socketmap_socket"`
+		SocketOwnerUser  string `yaml:"socket_owner_user" json:"socket_owner_user"`
+		SocketOwnerGroup string `yaml:"socket_owner_group" json:"socket_owner_group"`
+		SocketMode       string `yaml:"socket_mode" json:"socket_mode"`
+	} `yaml:"sockets" json:"sockets"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -64,16 +64,23 @@ func LoadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(b, &cfg); err != nil {
 		return nil, err
 	}
-	normalizeLegacyKeycloak(&cfg)
-	normalizeIDPProvider(&cfg)
+	if err := ValidateConfig(&cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func ValidateConfig(cfg *Config) error {
+	normalizeLegacyKeycloak(cfg)
+	normalizeIDPProvider(cfg)
 	if cfg.IDP.Provider == "" {
-		return nil, fmt.Errorf("missing idp.provider")
+		return fmt.Errorf("missing idp.provider")
 	}
 	if cfg.SQLite.Path == "" {
-		return nil, fmt.Errorf("missing sqlite.path")
+		return fmt.Errorf("missing sqlite.path")
 	}
-	if err := validateIDPConfig(&cfg); err != nil {
-		return nil, err
+	if err := validateIDPConfig(cfg); err != nil {
+		return err
 	}
 	if cfg.Policy.IDPFailureMode == "" {
 		if cfg.Policy.KeycloakFailureMode != "" {
@@ -87,7 +94,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Daemon.User = "mailcloak"
 		log.Printf("config: daemon.user not set, defaulting to %s", cfg.Daemon.User)
 	}
-	return &cfg, nil
+	return nil
 }
 
 func normalizeLegacyKeycloak(cfg *Config) {

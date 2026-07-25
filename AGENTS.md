@@ -1,4 +1,4 @@
-# Copilot instructions for mailcloak
+# Agent instructions for mailcloak
 
 This repository implements a lightweight mail authorization daemon for Postfix,
 integrating an external identity provider and a local SQLite store.
@@ -34,7 +34,7 @@ Changes should preserve the simplicity, determinism, and operational clarity of 
 - **SQLite access** is centralized in
   [internal/mailcloak/sqlite.go](/internal/mailcloak/sqlite.go).
   - The database schema is managed by the CLI helper
-    [mailcloakctl](/mailcloakctl).
+    [cmd/mailcloakctl](/cmd/mailcloakctl).
 
 ---
 
@@ -66,11 +66,10 @@ Changes should preserve the simplicity, determinism, and operational clarity of 
 - Common tasks are available via the Makefile:
   `make build`, `make run`, `make test`.
 
-- The CLI helper [mailcloakctl](/mailcloakctl):
+- The CLI helper [cmd/mailcloakctl](/cmd/mailcloakctl):
   - Initializes and manages the SQLite database.
   - Handles aliases and application credentials.
-  - Is written in Python and requires `argon2-cffi`
-    (see [requirements.txt](/requirements.txt)).
+  - Is written in Go and built by `make build`.
 
 ---
 

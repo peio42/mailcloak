@@ -15,28 +15,50 @@ type MailcloakDB struct{ DB *sql.DB }
 
 func OpenMailcloakDB(path string) (*MailcloakDB, error) {
 	log.Printf("sqlite: opening db at %s", path)
+	db, err := OpenExistingMailcloakDB(path)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("sqlite: db ready")
+
+	return db, nil
+}
+
+func (a *MailcloakDB) Close() error { return a.DB.Close() }
+
+func OpenExistingMailcloakDB(path string) (*MailcloakDB, error) {
 	if err := ensureDBExists(path); err != nil {
 		return nil, err
 	}
+	db, err := openMailcloakSQLite(path)
+	if err != nil {
+		return nil, err
+	}
+	return &MailcloakDB{DB: db}, nil
+}
 
+func openMailcloakSQLite(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
+	if err := applySQLitePragmas(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+func applySQLitePragmas(db *sql.DB) error {
 	if _, err := db.Exec(`
 PRAGMA foreign_keys=ON;
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
 `); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("init pragmas: %w", err)
+		return fmt.Errorf("init pragmas: %w", err)
 	}
-	log.Printf("sqlite: db ready")
-
-	return &MailcloakDB{DB: db}, nil
+	return nil
 }
-
-func (a *MailcloakDB) Close() error { return a.DB.Close() }
 
 func (a *MailcloakDB) DomainEnabled(domain string) (bool, error) {
 	var enabled int

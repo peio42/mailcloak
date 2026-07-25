@@ -77,15 +77,16 @@ flowchart LR
 
 ## Project layout
 - `cmd/mailcloak/` – main package entrypoint
+- `cmd/mailcloak-admin/` – HTTP admin API entrypoint
+- `cmd/mailcloakctl/` – Go CLI helper for bootstrap and database administration
 - `internal/mailcloak/` – daemon sources
 - `go.mod` / `go.sum` – Go module files
 - `docs/configs/config.yaml.sample` – sample config to copy to `/etc/mailcloak/config.yaml`
 - `docs/configs/openrc-mailcloak` – OpenRC service file
 - `docs/configs/postfix-main.cf` – Postfix config snippet
 - `docs/configs/dovecot.conf` – Dovecot config snippet
-- `mailcloakctl` – Python CLI helper to manage database
 
-## Build the binary
+## Build the binaries
 From the repository root:
 
 ```bash
@@ -120,38 +121,110 @@ Key settings:
 ## Mailcloak database
 
 ### Initialization
-**The SQLite database must be initialized before use.** You can use the provided helper script:
+**The SQLite database must be initialized before use.** You can use the Go CLI helper:
 ```bash
-./mailcloakctl init
+./bin/mailcloakctl init
 ```
 
 If your database is stored elsewhere, specify the path using the `--db` option:
 ```bash
-./mailcloakctl --db /path/to/mailcloak.db init
+./bin/mailcloakctl --db /path/to/mailcloak.db init
 ```
 This is also valid for all other commands for `mailcloakctl`.
 
-### Aliases
-You can manage aliases using the helper script:
+### HTTP admin API
+The Go admin API can serve the same database administration primitives over HTTP:
 
 ```bash
-./mailcloakctl aliases add alias@example.com username
-./mailcloakctl aliases list
+MAILCLOAK_ADMIN_TOKEN="$(openssl rand -hex 32)" \
+./bin/mailcloak-admin \
+  --config /etc/mailcloak/config.yaml \
+  --db /var/lib/mailcloak/state.db \
+  --listen 127.0.0.1:8080
+```
+
+For a first local bootstrap, the service can initialize the SQLite database before serving:
+
+```bash
+./bin/mailcloak-admin \
+  --config /etc/mailcloak/config.yaml \
+  --db /var/lib/mailcloak/state.db \
+  --init-db \
+  --token "$MAILCLOAK_ADMIN_TOKEN"
+```
+
+The API exposes:
+- `GET /`
+- `GET /assets/...`
+- `GET /api/setup/status`
+- `POST /api/setup/validate`
+- `POST /api/setup/apply`
+- `POST /api/idp/test`
+- `GET/POST /api/domains`
+- `GET/POST /api/aliases`
+- `GET/POST /api/apps`
+- `POST /api/apps/{app_id}/senders`
+
+The web UI is embedded in `mailcloak-admin` and served from `/`.
+
+Setup endpoints accept a JSON `config` object matching `config.yaml`. Example:
+
+```json
+{
+  "config": {
+    "idp": {
+      "provider": "keycloak",
+      "keycloak": {
+        "base_url": "https://keycloak.example.test",
+        "realm": "mail",
+        "client_id": "mailcloak-admin",
+        "client_secret": "secret",
+        "cache_ttl_seconds": 120
+      }
+    },
+    "sqlite": {
+      "path": "/var/lib/mailcloak/state.db"
+    },
+    "policy": {
+      "idp_failure_mode": "tempfail"
+    },
+    "sockets": {
+      "policy_socket": "/var/spool/postfix/private/mailcloak-policy",
+      "socketmap_socket": "/var/spool/postfix/private/mailcloak-socketmap",
+      "socket_owner_user": "postfix",
+      "socket_owner_group": "postfix",
+      "socket_mode": "0660"
+    },
+    "daemon": {
+      "user": "mailcloak"
+    }
+  },
+  "init_db": true,
+  "test_idp": true
+}
+```
+
+### Aliases
+You can manage aliases using the Go CLI helper:
+
+```bash
+./bin/mailcloakctl aliases add alias@example.com username
+./bin/mailcloakctl aliases list
 ```
 
 ### Apps (Dovecot app passwords)
-The helper script also manages application credentials. The application password is a token: updating the application ID and password is handled by the script and stored as a hash in SQLite. Dovecot can verify these credentials using plain authentication against the stored hash. Applications are restricted to sending emails only (they cannot receive them) and may use only their authorized sender addresses.
+The Go CLI helper also manages application credentials. The application password is a token: updating the application ID and password is handled by the CLI and stored as a hash in SQLite. Dovecot can verify these credentials using plain authentication against the stored hash. Applications are restricted to sending emails only (they cannot receive them) and may use only their authorized sender addresses.
 As a side note, Dovecot needs to be able to read the SQLite database to authenticate applications.
 
 Examples:
 
 ```bash
-./mailcloakctl apps add my-app-id
-printf '%s\n' "$MY_APP_TOKEN" | ./mailcloakctl apps add my-app-id --password-stdin
-./mailcloakctl apps allow my-app-id sender@example.com
-./mailcloakctl apps list
-./mailcloakctl apps disallow my-app-id sender@example.com
-./mailcloakctl apps del my-app-id
+./bin/mailcloakctl apps add my-app-id
+printf '%s\n' "$MY_APP_TOKEN" | ./bin/mailcloakctl apps add my-app-id --password-stdin
+./bin/mailcloakctl apps allow my-app-id sender@example.com
+./bin/mailcloakctl apps list
+./bin/mailcloakctl apps disallow my-app-id sender@example.com
+./bin/mailcloakctl apps del my-app-id
 ```
 
 Passing the password as a positional argument is still supported for explicit non-interactive use, but it is less safe because it can be exposed through shell history and process listings.

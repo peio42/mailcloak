@@ -10,10 +10,6 @@ vendor/
 # IDE
 .idea/
 .vscode/
-.venv/
 
-# Checks
-.ruff_cache/
-
-# Python
+# Generated test fixture cache
 __pycache__/

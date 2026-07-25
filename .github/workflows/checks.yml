@@ -44,19 +44,3 @@ jobs:
 
       - name: Go test (integration)
         run: go test -tags=integration ./...
-
-      # ---- Python checks ----
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.x'
-
-      - name: Python syntax check
-        run: python -m compileall mailcloakctl
-
-      - name: Python lint (ruff)
-        run: |
-          pip install ruff==0.15.1
-          ruff check mailcloakctl
-          ruff format --check mailcloakctl
-

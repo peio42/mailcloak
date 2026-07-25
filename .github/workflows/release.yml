@@ -83,14 +83,25 @@ jobs:
         run: |
           set -eux
           mkdir -p dist
-          BIN="mailcloak-${GOOS}-${GOARCH}"
+          DIST_DIR="mailcloak-${GOOS}-${GOARCH}"
+          mkdir -p "dist/${DIST_DIR}"
 
           go build \
             -trimpath \
             -ldflags="-s -w -X main.version=${VERSION}" \
-            -o "dist/${BIN}" ./cmd/mailcloak
+            -o "dist/${DIST_DIR}/mailcloak" ./cmd/mailcloak
 
-          tar -C dist -czf "dist/${BIN}.tar.gz" "${BIN}"
+          go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o "dist/${DIST_DIR}/mailcloakctl" ./cmd/mailcloakctl
+
+          go build \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o "dist/${DIST_DIR}/mailcloak-admin" ./cmd/mailcloak-admin
+
+          tar -C dist -czf "dist/${DIST_DIR}.tar.gz" "${DIST_DIR}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
@@ -106,7 +117,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout (for mailcloakctl)
+      - name: Checkout
         uses: actions/checkout@v5
 
       - name: Download all tarball artifacts
@@ -120,7 +131,6 @@ jobs:
           mkdir -p dist
 
           find dist-all -type f -name "*.tar.gz" -exec cp -v {} dist/ \;
-          cp -v mailcloakctl dist/
 
           ls -lah dist
 
@@ -149,6 +159,5 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.tar.gz
-            dist/mailcloakctl
             dist/checksums.txt
           overwrite_files: true
